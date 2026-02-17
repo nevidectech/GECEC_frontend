@@ -8,3 +8,12 @@ node_modules/
 .next/
 .env*.local
 .DS_Store
+
+
+.env.local
+.env
+.*log
+# Ignore .env files but not .env.example
+!.env.example
+# Ignore .env files but not .env.example
+!.env.example
