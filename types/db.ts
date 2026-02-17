@@ -3,6 +3,168 @@ export type ProfileRole = "admin" | "collector" | "other"
 export interface Database {
   public: {
     Tables: {
+      client: {
+        Row: {
+          id: string
+          first_name: string
+          last_name: string
+          card_number: string | null
+          gender: number
+          email: string | null
+          address: string | null
+          job_title: string | null
+          signature: string | null
+          phone: string
+          code: string
+          zone_id: string
+          username: string | null
+          password_hash: string | null
+          status: number
+          created_at: string | null
+          updated_at: string | null
+          created_by: string
+          updated_by: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          deletion_reason: string | null
+        }
+        Insert: {
+          id?: string
+          first_name: string
+          last_name: string
+          card_number?: string | null
+          gender: number
+          email?: string | null
+          address?: string | null
+          job_title?: string | null
+          signature?: string | null
+          phone: string
+          code: string
+          zone_id: string
+          username?: string | null
+          password_hash?: string | null
+          status?: number
+          created_at?: string | null
+          updated_at?: string | null
+          created_by: string
+          updated_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deletion_reason?: string | null
+        }
+        Update: {
+          first_name?: string
+          last_name?: string
+          card_number?: string | null
+          gender?: number
+          email?: string | null
+          address?: string | null
+          job_title?: string | null
+          signature?: string | null
+          phone?: string
+          code?: string
+          zone_id?: string
+          username?: string | null
+          password_hash?: string | null
+          status?: number
+          created_at?: string | null
+          updated_at?: string | null
+          created_by?: string
+          updated_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deletion_reason?: string | null
+        }
+        Relationships: []
+      }
+      cotisation: {
+        Row: {
+          id: string
+          carnet_id: string
+          transaction_code: string | null
+          receipt_number: string | null
+          amount: number
+          currency: number
+          cotisation_date: string
+          justification_url: string | null
+          created_at: string | null
+          updated_at: string | null
+          created_by: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          carnet_id: string
+          transaction_code?: string | null
+          receipt_number?: string | null
+          amount: number
+          currency?: number
+          cotisation_date: string
+          justification_url?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          created_by: string
+          updated_by?: string | null
+        }
+        Update: {
+          carnet_id?: string
+          transaction_code?: string | null
+          receipt_number?: string | null
+          amount?: number
+          currency?: number
+          cotisation_date?: string
+          justification_url?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          created_by?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      carnet_duplicate: {
+        Row: {
+          id: string
+          original_carnet_id: string
+          number: string
+          month: string | null
+          initial_amount: number
+          price: number
+          currency: number
+          client_code: string | null
+          created_at: string | null
+          updated_at: string | null
+          created_by: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          original_carnet_id: string
+          number: string
+          month?: string | null
+          initial_amount?: number
+          price: number
+          currency?: number
+          client_code?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          created_by: string
+          updated_by?: string | null
+        }
+        Update: {
+          original_carnet_id?: string
+          number?: string
+          month?: string | null
+          initial_amount?: number
+          price?: number
+          currency?: number
+          client_code?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          created_by?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       carnet: {
         Row: {
           id: string
@@ -173,3 +335,6 @@ export type Profile = Database["public"]["Tables"]["user_profile"]["Row"]
 export type Zone = Database["public"]["Tables"]["zone"]["Row"]
 export type ZoneUser = Database["public"]["Tables"]["zone_user"]["Row"]
 export type Carnet = Database["public"]["Tables"]["carnet"]["Row"]
+export type Cotisation = Database["public"]["Tables"]["cotisation"]["Row"]
+export type CarnetDuplicate = Database["public"]["Tables"]["carnet_duplicate"]["Row"]
+export type Client = Database["public"]["Tables"]["client"]["Row"]

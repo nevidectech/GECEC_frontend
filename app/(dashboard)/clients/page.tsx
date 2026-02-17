@@ -1,11 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { createClient } from "@/lib/supabase/client"
+import type { Carnet, Client, Zone } from "@/types/db"
 import {
   Table,
   TableBody,
@@ -34,32 +36,118 @@ import {
   Download,
 } from "lucide-react"
 
-const clients = [
-  { id: "CLT-0456", name: "Marie Kabila", initials: "MK", phone: "+243 812 345 678", zone: "Lubumbashi-Centre", carnets: 2, totalEpargne: "3,650,000 FC", status: "active", since: "2022" },
-  { id: "CLT-0457", name: "Pierre Mutombo", initials: "PM", phone: "+243 813 456 789", zone: "Lubumbashi-Est", carnets: 1, totalEpargne: "$1,200", status: "active", since: "2023" },
-  { id: "CLT-0458", name: "Josephine Kayembe", initials: "JK", phone: "+243 814 567 890", zone: "Likasi", carnets: 1, totalEpargne: "850,000 FC", status: "active", since: "2023" },
-  { id: "CLT-0459", name: "Albert Tshisekedi", initials: "AT", phone: "+243 815 678 901", zone: "Kolwezi", carnets: 3, totalEpargne: "5,200,000 FC", status: "inactive", since: "2021" },
-  { id: "CLT-0460", name: "Francoise Mwamba", initials: "FM", phone: "+243 816 789 012", zone: "Lubumbashi-Centre", carnets: 2, totalEpargne: "$6,800", status: "active", since: "2022" },
-  { id: "CLT-0461", name: "Jean-Baptiste Ilunga", initials: "JI", phone: "+243 817 890 123", zone: "Kipushi", carnets: 1, totalEpargne: "1,200,000 FC", status: "suspended", since: "2023" },
-  { id: "CLT-0462", name: "Elisabeth Kasongo", initials: "EK", phone: "+243 818 901 234", zone: "Lubumbashi-Est", carnets: 2, totalEpargne: "4,100,000 FC", status: "active", since: "2021" },
-  { id: "CLT-0463", name: "Claude Mbuyi", initials: "CM", phone: "+243 819 012 345", zone: "Likasi", carnets: 1, totalEpargne: "$2,800", status: "active", since: "2023" },
-]
-
 const statusMap: Record<string, { status: "success" | "warning" | "error"; label: string }> = {
   active: { status: "success", label: "Actif" },
   inactive: { status: "error", label: "Inactif" },
   suspended: { status: "warning", label: "Suspendu" },
 }
 
+const currencyMap: Record<number, string> = {
+  0: "CDF",
+  1: "USD",
+  2: "EUR",
+}
+
+type ClientView = {
+  id: string
+  code: string
+  name: string
+  initials: string
+  phone: string
+  zone: string
+  carnets: number
+  totalEpargne: string
+  status: "active" | "inactive" | "suspended"
+  since: string
+}
+
+function formatMoney(value: number, currency: number) {
+  const label = currencyMap[currency] ?? `CUR-${currency}`
+  const locale = label === "USD" || label === "EUR" ? "en-US" : "fr-FR"
+  return `${new Intl.NumberFormat(locale).format(value)} ${label}`
+}
+
 export default function ClientsPage() {
+  const supabase = useMemo(() => createClient(), [])
+  const [clients, setClients] = useState<ClientView[]>([])
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
+
+  useEffect(() => {
+    async function fetchClients() {
+      setLoading(true)
+      setFetchError(null)
+
+      const [clientsRes, zonesRes, carnetsRes] = await Promise.all([
+        supabase.from("client").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
+        supabase.from("zone").select("id, name"),
+        supabase.from("carnet").select("id, client_code, initial_amount, currency"),
+      ])
+
+      if (clientsRes.error) {
+        setFetchError(clientsRes.error.message)
+        setClients([])
+        setLoading(false)
+        return
+      }
+
+      if (zonesRes.error) {
+        setFetchError(zonesRes.error.message)
+      }
+      if (carnetsRes.error) {
+        setFetchError(carnetsRes.error.message)
+      }
+
+      const zones = (zonesRes.data ?? []) as Pick<Zone, "id" | "name">[]
+      const zoneMap = new Map(zones.map((zone) => [zone.id, zone.name]))
+      const carnets = (carnetsRes.data ?? []) as Pick<Carnet, "id" | "client_code" | "initial_amount" | "currency">[]
+
+      const mapped = ((clientsRes.data ?? []) as Client[]).map((client) => {
+        const name = `${client.first_name} ${client.last_name}`.trim()
+        const initials = `${client.first_name[0] ?? ""}${client.last_name[0] ?? ""}`.toUpperCase()
+        const clientCarnets = carnets.filter((carnet) => carnet.client_code === client.code)
+        const totalByCurrency = new Map<number, number>()
+        clientCarnets.forEach((carnet) => {
+          const current = totalByCurrency.get(carnet.currency) ?? 0
+          totalByCurrency.set(carnet.currency, current + Number(carnet.initial_amount ?? 0))
+        })
+
+        const primaryCurrency = totalByCurrency.keys().next().value ?? 0
+        const primaryTotal = totalByCurrency.get(primaryCurrency) ?? 0
+        const status = client.status === 1 ? "active" : client.status === 0 ? "inactive" : "suspended"
+        const since = client.created_at ? new Date(client.created_at).getFullYear().toString() : "-"
+
+        return {
+          id: client.id,
+          code: client.code,
+          name,
+          initials,
+          phone: client.phone,
+          zone: zoneMap.get(client.zone_id) ?? "-",
+          carnets: clientCarnets.length,
+          totalEpargne: formatMoney(primaryTotal, primaryCurrency),
+          status,
+          since,
+        } satisfies ClientView
+      })
+
+      setClients(mapped)
+      setLoading(false)
+    }
+
+    void fetchClients()
+  }, [supabase])
 
   const filtered = clients.filter(
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.id.toLowerCase().includes(search.toLowerCase()) ||
+      c.code.toLowerCase().includes(search.toLowerCase()) ||
       c.phone.includes(search)
   )
+
+  const activeCount = clients.filter((client) => client.status === "active").length
+  const inactiveCount = clients.filter((client) => client.status === "inactive").length
 
   return (
     <>
@@ -86,7 +174,7 @@ export default function ClientsPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total clients</p>
-                <p className="text-xl font-bold text-foreground">1,247</p>
+                <p className="text-xl font-bold text-foreground">{clients.length}</p>
               </div>
             </CardContent>
           </Card>
@@ -97,7 +185,7 @@ export default function ClientsPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Actifs</p>
-                <p className="text-xl font-bold text-foreground">1,089</p>
+                <p className="text-xl font-bold text-foreground">{activeCount}</p>
               </div>
             </CardContent>
           </Card>
@@ -108,7 +196,7 @@ export default function ClientsPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Inactifs</p>
-                <p className="text-xl font-bold text-foreground">158</p>
+                <p className="text-xl font-bold text-foreground">{inactiveCount}</p>
               </div>
             </CardContent>
           </Card>
@@ -151,7 +239,25 @@ export default function ClientsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((client) => (
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                        Chargement des clients...
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {!loading && fetchError && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-8 text-center text-red-500">
+                        {fetchError}
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {!loading &&
+                    !fetchError &&
+                    filtered.map((client) => (
                     <TableRow key={client.id} className="group">
                       <TableCell>
                         <div className="flex items-center gap-3">
@@ -168,7 +274,7 @@ export default function ClientsPage() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">{client.id}</TableCell>
+                      <TableCell className="font-mono text-sm text-muted-foreground">{client.code}</TableCell>
                       <TableCell className="text-muted-foreground">{client.phone}</TableCell>
                       <TableCell className="text-muted-foreground">{client.zone}</TableCell>
                       <TableCell className="text-center">
@@ -207,7 +313,15 @@ export default function ClientsPage() {
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    ))}
+
+                  {!loading && !fetchError && filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                        Aucun client trouve.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
