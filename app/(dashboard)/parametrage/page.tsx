@@ -8,6 +8,9 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ParametrageUsersTab } from "@/components/parametrage-users-tab"
+import { ParametrageZonesTab } from "@/components/parametrage-zones-tab"
+import { ParametrageAffectationTab } from "@/components/parametrage-affectation-tab"
 import {
   Table,
   TableBody,
@@ -23,28 +26,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { StatusBadge } from "@/components/status-badge"
 import {
-  Settings,
   Users,
   Building2,
   DollarSign,
   Percent,
   Receipt,
-  Shield,
   Save,
   Plus,
   Edit,
+  MapPin,
+  Link2,
 } from "lucide-react"
-
-const users = [
-  { name: "Jean Dupont", email: "jean.dupont@gecec.cd", role: "Administrateur", initials: "JD", status: "active" },
-  { name: "Sarah Kalala", email: "sarah.kalala@gecec.cd", role: "Agent", initials: "SK", status: "active" },
-  { name: "Patrick Mbuyi", email: "patrick.mbuyi@gecec.cd", role: "Collecteur", initials: "PM", status: "active" },
-  { name: "David Kasongo", email: "david.kasongo@gecec.cd", role: "Collecteur", initials: "DK", status: "active" },
-  { name: "Grace Mwamba", email: "grace.mwamba@gecec.cd", role: "Collecteur", initials: "GM", status: "inactive" },
-]
 
 const remunerationTiers = [
   { tier: "Standard CDF", soldeMin: "0 FC", soldeMax: "1,000,000 FC", taux: "1.0%" },
@@ -85,6 +79,14 @@ export default function ParametragePage() {
               <Building2 className="h-3.5 w-3.5" />
               Organisation
             </TabsTrigger>
+            <TabsTrigger value="zones" className="gap-1.5">
+              <MapPin className="h-3.5 w-3.5" />
+              Zones
+            </TabsTrigger>
+            <TabsTrigger value="affectation" className="gap-1.5">
+              <Link2 className="h-3.5 w-3.5" />
+              Affectation
+            </TabsTrigger>
             <TabsTrigger value="currency" className="gap-1.5">
               <DollarSign className="h-3.5 w-3.5" />
               Devises
@@ -100,70 +102,15 @@ export default function ParametragePage() {
           </TabsList>
 
           <TabsContent value="users" className="mt-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base font-semibold">Utilisateurs & Roles</CardTitle>
-                    <CardDescription>Gestion des acces et permissions</CardDescription>
-                  </div>
-                  <Button size="sm" className="gap-1.5">
-                    <Plus className="h-3.5 w-3.5" />
-                    Ajouter
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-lg border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead className="font-semibold">Utilisateur</TableHead>
-                        <TableHead className="font-semibold">Email</TableHead>
-                        <TableHead className="font-semibold">Role</TableHead>
-                        <TableHead className="font-semibold">Statut</TableHead>
-                        <TableHead className="font-semibold text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {users.map((user) => (
-                        <TableRow key={user.email}>
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
-                                <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                                  {user.initials}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="font-medium text-foreground">{user.name}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                          <TableCell>
-                            <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
-                              {user.role === "Administrateur" && <Shield className="h-3 w-3" />}
-                              {user.role}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <StatusBadge
-                              status={user.status === "active" ? "success" : "error"}
-                              label={user.status === "active" ? "Actif" : "Inactif"}
-                            />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
-                              <Edit className="h-3 w-3" />
-                              Modifier
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+            <ParametrageUsersTab />
+          </TabsContent>
+
+          <TabsContent value="zones" className="mt-6">
+            <ParametrageZonesTab />
+          </TabsContent>
+
+          <TabsContent value="affectation" className="mt-6">
+            <ParametrageAffectationTab />
           </TabsContent>
 
           <TabsContent value="organization" className="mt-6">

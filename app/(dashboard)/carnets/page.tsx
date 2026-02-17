@@ -1,11 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { createClient } from "@/lib/supabase/client"
+import type { Carnet } from "@/types/db"
 import {
   Table,
   TableBody,
@@ -40,34 +42,97 @@ import {
   BookOpen,
 } from "lucide-react"
 
-const carnets = [
-  { id: "C-2024-1847", client: "Marie Kabila", type: "Standard", solde: "2,450,000 FC", currency: "CDF", status: "active", cotisations: 48, zone: "Lubumbashi-Centre", createdAt: "15/01/2024" },
-  { id: "C-2024-1846", client: "Pierre Mutombo", type: "Premium", solde: "$1,200", currency: "USD", status: "active", cotisations: 36, zone: "Lubumbashi-Est", createdAt: "12/01/2024" },
-  { id: "C-2024-1845", client: "Josephine Kayembe", type: "Standard", solde: "850,000 FC", currency: "CDF", status: "active", cotisations: 24, zone: "Likasi", createdAt: "10/01/2024" },
-  { id: "C-2024-1844", client: "Albert Tshisekedi", type: "Standard", solde: "0 FC", currency: "CDF", status: "closed", cotisations: 52, zone: "Kolwezi", createdAt: "08/01/2024" },
-  { id: "C-2024-1843", client: "Francoise Mwamba", type: "Premium", solde: "$4,500", currency: "USD", status: "active", cotisations: 60, zone: "Lubumbashi-Centre", createdAt: "05/01/2024" },
-  { id: "C-2024-1842", client: "Jean-Baptiste Ilunga", type: "Standard", solde: "1,200,000 FC", currency: "CDF", status: "suspended", cotisations: 12, zone: "Kipushi", createdAt: "02/01/2024" },
-  { id: "C-2024-1841", client: "Elisabeth Kasongo", type: "Standard", solde: "3,100,000 FC", currency: "CDF", status: "active", cotisations: 72, zone: "Lubumbashi-Est", createdAt: "28/12/2023" },
-  { id: "C-2024-1840", client: "Claude Mbuyi", type: "Premium", solde: "$2,800", currency: "USD", status: "active", cotisations: 44, zone: "Likasi", createdAt: "25/12/2023" },
-]
-
 const statusMap: Record<string, { status: "success" | "warning" | "error" | "info"; label: string }> = {
   active: { status: "success", label: "Actif" },
-  suspended: { status: "warning", label: "Suspendu" },
   closed: { status: "error", label: "Cloture" },
 }
 
+type CarnetView = {
+  id: string
+  number: string
+  clientCode: string
+  month: string
+  initialAmount: number
+  price: number
+  currencyLabel: string
+  status: "active" | "closed"
+  createdAt: string
+  validated: boolean
+}
+
+const currencyMap: Record<number, string> = {
+  0: "CDF",
+  1: "USD",
+  2: "EUR",
+}
+
+function formatMoney(value: number, currencyLabel: string) {
+  const locale = currencyLabel === "USD" || currencyLabel === "EUR" ? "en-US" : "fr-FR"
+  return `${new Intl.NumberFormat(locale).format(value)} ${currencyLabel}`
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "-"
+  return new Intl.DateTimeFormat("fr-FR").format(new Date(value))
+}
+
+function mapCarnet(row: Carnet): CarnetView {
+  return {
+    id: row.id,
+    number: row.number,
+    clientCode: row.client_code ?? "-",
+    month: row.month ?? "-",
+    initialAmount: Number(row.initial_amount ?? 0),
+    price: Number(row.price ?? 0),
+    currencyLabel: currencyMap[row.currency] ?? `CUR-${row.currency}`,
+    status: row.is_archived ? "closed" : "active",
+    createdAt: formatDate(row.created_at),
+    validated: !!row.validated_at,
+  }
+}
+
 export default function CarnetsPage() {
+  const supabase = useMemo(() => createClient(), [])
+  const [carnets, setCarnets] = useState<CarnetView[]>([])
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
 
+  useEffect(() => {
+    async function fetchCarnets() {
+      setLoading(true)
+      setFetchError(null)
+
+      const { data, error } = await supabase
+        .from("carnet")
+        .select("*")
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        setFetchError(error.message)
+        setCarnets([])
+      } else {
+        setCarnets((data ?? []).map((row) => mapCarnet(row as Carnet)))
+      }
+
+      setLoading(false)
+    }
+
+    void fetchCarnets()
+  }, [supabase])
+
   const filtered = carnets.filter((c) => {
     const matchSearch =
-      c.id.toLowerCase().includes(search.toLowerCase()) ||
-      c.client.toLowerCase().includes(search.toLowerCase())
+      c.number.toLowerCase().includes(search.toLowerCase()) ||
+      c.clientCode.toLowerCase().includes(search.toLowerCase())
     const matchStatus = statusFilter === "all" || c.status === statusFilter
     return matchSearch && matchStatus
   })
+
+  const activeCount = carnets.filter((c) => c.status === "active").length
+  const validatedCount = carnets.filter((c) => c.validated).length
+  const closedCount = carnets.filter((c) => c.status === "closed").length
 
   return (
     <>
@@ -94,7 +159,7 @@ export default function CarnetsPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Actifs</p>
-                <p className="text-xl font-bold text-foreground">1,654</p>
+                <p className="text-xl font-bold text-foreground">{activeCount}</p>
               </div>
             </CardContent>
           </Card>
@@ -104,8 +169,8 @@ export default function CarnetsPage() {
                 <BookOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Suspendus</p>
-                <p className="text-xl font-bold text-foreground">127</p>
+                <p className="text-sm text-muted-foreground">Valides</p>
+                <p className="text-xl font-bold text-foreground">{validatedCount}</p>
               </div>
             </CardContent>
           </Card>
@@ -116,7 +181,7 @@ export default function CarnetsPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Clotures</p>
-                <p className="text-xl font-bold text-foreground">111</p>
+                <p className="text-xl font-bold text-foreground">{closedCount}</p>
               </div>
             </CardContent>
           </Card>
@@ -130,7 +195,7 @@ export default function CarnetsPage() {
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Rechercher par ID ou client..."
+                    placeholder="Rechercher par numero ou code client..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="pl-9 w-64 h-9"
@@ -144,7 +209,6 @@ export default function CarnetsPage() {
                   <SelectContent>
                     <SelectItem value="all">Tous</SelectItem>
                     <SelectItem value="active">Actif</SelectItem>
-                    <SelectItem value="suspended">Suspendu</SelectItem>
                     <SelectItem value="closed">Cloture</SelectItem>
                   </SelectContent>
                 </Select>
@@ -159,37 +223,57 @@ export default function CarnetsPage() {
             <div className="rounded-lg border overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead className="font-semibold">Reference</TableHead>
-                    <TableHead className="font-semibold">Client</TableHead>
-                    <TableHead className="font-semibold">Type</TableHead>
-                    <TableHead className="font-semibold">Solde</TableHead>
-                    <TableHead className="font-semibold text-center">Cotisations</TableHead>
-                    <TableHead className="font-semibold">Zone</TableHead>
-                    <TableHead className="font-semibold">Statut</TableHead>
-                    <TableHead className="font-semibold text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="font-semibold">Numero</TableHead>
+                        <TableHead className="font-semibold">Code client</TableHead>
+                        <TableHead className="font-semibold">Mois</TableHead>
+                        <TableHead className="font-semibold">Montant initial</TableHead>
+                        <TableHead className="font-semibold">Prix</TableHead>
+                        <TableHead className="font-semibold">Devise</TableHead>
+                        <TableHead className="font-semibold">Cree le</TableHead>
+                        <TableHead className="font-semibold">Statut</TableHead>
+                        <TableHead className="font-semibold text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
                 <TableBody>
-                  {filtered.map((carnet) => (
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
+                        Chargement des carnets...
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {!loading && fetchError && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="py-8 text-center text-red-500">
+                        {fetchError}
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {!loading &&
+                    !fetchError &&
+                    filtered.map((carnet) => (
                     <TableRow key={carnet.id} className="group">
                       <TableCell>
                         <Link
                           href={`/carnets/${carnet.id}`}
                           className="font-mono text-sm font-medium text-primary hover:underline"
                         >
-                          {carnet.id}
+                          {carnet.number}
                         </Link>
                       </TableCell>
-                      <TableCell className="font-medium text-foreground">{carnet.client}</TableCell>
-                      <TableCell>
-                        <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
-                          {carnet.type}
-                        </span>
+                      <TableCell className="font-medium text-foreground">{carnet.clientCode}</TableCell>
+                      <TableCell className="text-muted-foreground">{carnet.month}</TableCell>
+                      <TableCell className="font-semibold tabular-nums text-foreground">
+                        {formatMoney(carnet.initialAmount, carnet.currencyLabel)}
                       </TableCell>
-                      <TableCell className="font-semibold tabular-nums text-foreground">{carnet.solde}</TableCell>
-                      <TableCell className="text-center tabular-nums">{carnet.cotisations}</TableCell>
-                      <TableCell className="text-muted-foreground">{carnet.zone}</TableCell>
+                      <TableCell className="font-semibold tabular-nums text-foreground">
+                        {formatMoney(carnet.price, carnet.currencyLabel)}
+                      </TableCell>
+                      <TableCell>{carnet.currencyLabel}</TableCell>
+                      <TableCell className="text-muted-foreground">{carnet.createdAt}</TableCell>
                       <TableCell>
                         <StatusBadge
                           status={statusMap[carnet.status].status}
@@ -223,7 +307,15 @@ export default function CarnetsPage() {
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    ))}
+
+                  {!loading && !fetchError && filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
+                        Aucun carnet trouve.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
