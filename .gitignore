@@ -17,3 +17,5 @@ node_modules/
 !.env.example
 # Ignore .env files but not .env.example
 !.env.example
+.env
+.env.local
