@@ -22,9 +22,6 @@ import { register } from "@/lib/auth";
 import Link from "next/link";
 
 const formSchema = z.object({
-    username: z.string().min(3, {
-        message: "Le nom d'utilisateur doit contenir au moins 3 caractères.",
-    }),
     first_name: z.string().min(2, {
         message: "Le prénom est requis.",
     }),
@@ -47,7 +44,6 @@ export function RegistrationForm() {
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
         defaultValues: {
-            username: "",
             first_name: "",
             last_name: "",
             email: "",
@@ -59,7 +55,6 @@ export function RegistrationForm() {
         setIsLoading(true);
         try {
             const formData = new FormData();
-            formData.append("username", values.username);
             formData.append("first_name", values.first_name);
             formData.append("last_name", values.last_name);
             formData.append("email", values.email);
@@ -134,26 +129,6 @@ export function RegistrationForm() {
                             />
                         </div>
 
-                        <FormField
-                            control={form.control}
-                            name="username"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Nom d'utilisateur</FormLabel>
-                                    <FormControl>
-                                        <div className="relative">
-                                            <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                                            <Input
-                                                placeholder="utilisateur123"
-                                                className="pl-10 h-11 transition-all focus:ring-2 focus:ring-primary/20"
-                                                {...field}
-                                            />
-                                        </div>
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
 
                         <FormField
                             control={form.control}

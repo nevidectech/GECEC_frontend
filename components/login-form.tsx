@@ -21,8 +21,8 @@ import { useRouter } from "next/navigation";
 import { login } from "@/lib/auth";
 
 const formSchema = z.object({
-    username: z.string().min(3, {
-        message: "Le nom d'utilisateur doit contenir au moins 3 caractères.",
+    email: z.string().email({
+        message: "Veuillez entrer une adresse email valide.",
     }),
     password: z.string().min(6, {
         message: "Le mot de passe doit contenir au moins 6 caractères.",
@@ -39,7 +39,7 @@ export function LoginForm() {
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
         defaultValues: {
-            username: "",
+            email: "",
             password: "",
         },
     });
@@ -48,7 +48,7 @@ export function LoginForm() {
         setIsLoading(true);
         try {
             const formData = new FormData();
-            formData.append("username", values.username);
+            formData.append("email", values.email);
             formData.append("password", values.password);
 
             const result = await login(formData);
@@ -80,15 +80,15 @@ export function LoginForm() {
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                         <FormField
                             control={form.control}
-                            name="username"
+                            name="email"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Nom d'utilisateur</FormLabel>
+                                    <FormLabel>Email</FormLabel>
                                     <FormControl>
                                         <div className="relative">
                                             <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                             <Input
-                                                placeholder="utilisateur"
+                                                placeholder="exemple@email.com"
                                                 className="pl-10 h-11 transition-all focus:ring-2 focus:ring-primary/20"
                                                 {...field}
                                             />
