@@ -4,8 +4,10 @@ import { useMemo, useState } from "react"
 import { Plus, Shield, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { useUsers } from "@/hooks/useUsers"
+import { useZones } from "@/hooks/useZones"
 import type { Profile, ProfileRole } from "@/types/db"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -43,6 +45,7 @@ import {
 
 type FormState = {
   fullName: string
+  username: string
   email: string
   password: string
   role: ProfileRole
@@ -50,6 +53,7 @@ type FormState = {
 
 const defaultForm: FormState = {
   fullName: "",
+  username: "",
   email: "",
   password: "",
   role: "collector",
@@ -62,20 +66,51 @@ function getInitials(user: Profile) {
   return `${words[0][0]}${words[1][0]}`.toUpperCase()
 }
 
+function formatDate(value: string | null) {
+  if (!value) return "-"
+  return new Intl.DateTimeFormat("fr-FR").format(new Date(value))
+}
+
+const roleMeta: Record<ProfileRole, { label: string; variant: "default" | "secondary" | "outline" }> = {
+  admin: { label: "Admin", variant: "default" },
+  collector: { label: "Collector", variant: "secondary" },
+  other: { label: "Other", variant: "outline" },
+}
+
 export function ParametrageUsersTab() {
   const { users, loading, error, createUser, updateUserRole } = useUsers()
+  const { zones } = useZones()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<FormState>(defaultForm)
   const [submitting, setSubmitting] = useState(false)
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
 
   const usersCountLabel = useMemo(() => `${users.length} utilisateur(s)`, [users.length])
+  const adminsCount = useMemo(
+    () => users.filter((user) => (user.function ?? "other") === "admin").length,
+    [users],
+  )
+  const collectorsCount = useMemo(
+    () => users.filter((user) => (user.function ?? "other") === "collector").length,
+    [users],
+  )
+  const othersCount = useMemo(
+    () => users.filter((user) => (user.function ?? "other") === "other").length,
+    [users],
+  )
+  const zoneNameById = useMemo(
+    () => new Map(zones.map((zone) => [zone.id, zone.name])),
+    [zones],
+  )
 
   async function handleCreateUser(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitting(true)
 
-    const result = await createUser(form)
+    const result = await createUser({
+      ...form,
+      username: form.username.trim() || undefined,
+    })
     if (!result.success) {
       toast.error(result.error ?? "Impossible de creer l'utilisateur")
       setSubmitting(false)
@@ -134,6 +169,18 @@ export function ParametrageUsersTab() {
                       setForm((current) => ({ ...current, fullName: event.target.value }))
                     }
                     required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="username">Nom utilisateur</Label>
+                  <Input
+                    id="username"
+                    placeholder="jean.dupont"
+                    value={form.username}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, username: event.target.value }))
+                    }
                   />
                 </div>
 
@@ -201,18 +248,37 @@ export function ParametrageUsersTab() {
       </CardHeader>
 
       <CardContent>
+        <div className="grid gap-3 pb-4 md:grid-cols-3">
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-xs text-muted-foreground">Administrateurs</p>
+            <p className="text-lg font-semibold text-foreground">{adminsCount}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-xs text-muted-foreground">Collectors</p>
+            <p className="text-lg font-semibold text-foreground">{collectorsCount}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-xs text-muted-foreground">Autres roles</p>
+            <p className="text-lg font-semibold text-foreground">{othersCount}</p>
+          </div>
+        </div>
+
         <div className="rounded-lg border overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead className="font-semibold">Utilisateur</TableHead>
+                <TableHead className="font-semibold">Contact</TableHead>
+                <TableHead className="font-semibold">Zone</TableHead>
                 <TableHead className="font-semibold">Role</TableHead>
+                <TableHead className="font-semibold">Cree le</TableHead>
+                <TableHead className="font-semibold">ID auth</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={2} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                     Chargement des utilisateurs...
                   </TableCell>
                 </TableRow>
@@ -220,7 +286,7 @@ export function ParametrageUsersTab() {
 
               {!loading && error && (
                 <TableRow>
-                  <TableCell colSpan={2} className="py-8 text-center text-red-500">
+                  <TableCell colSpan={6} className="py-8 text-center text-red-500">
                     {error}
                   </TableCell>
                 </TableRow>
@@ -231,21 +297,32 @@ export function ParametrageUsersTab() {
                 users.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                            {getInitials(user)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground">
-                            {user.username ?? "Sans nom"}
-                          </span>
-                          <span className="text-xs text-muted-foreground font-mono">
-                            {user.id}
-                          </span>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                              {getInitials(user)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">
+                              {user.username ?? "Sans nom"}
+                            </span>
+                            <span className="text-xs text-muted-foreground">{user.email ?? "-"}</span>
+                          </div>
                         </div>
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="text-sm text-foreground">{user.phone ?? "-"}</span>
+                        <span className="text-xs text-muted-foreground">{user.email ?? "-"}</span>
                       </div>
+                    </TableCell>
+
+                    <TableCell>
+                      <Badge variant="outline">
+                        {user.zone_id ? zoneNameById.get(user.zone_id) ?? "Zone inconnue" : "Non assigne"}
+                      </Badge>
                     </TableCell>
 
                     <TableCell>
@@ -264,17 +341,28 @@ export function ParametrageUsersTab() {
                             <SelectItem value="other">Other</SelectItem>
                           </SelectContent>
                         </Select>
+                        <Badge variant={roleMeta[user.function ?? "other"].variant}>
+                          {roleMeta[user.function ?? "other"].label}
+                        </Badge>
                         {user.function === "admin" && (
                           <Shield className="h-3.5 w-3.5 text-primary" />
                         )}
                       </div>
+                    </TableCell>
+
+                    <TableCell className="text-muted-foreground">
+                      {formatDate(user.created_at)}
+                    </TableCell>
+
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {user.user_id}
                     </TableCell>
                   </TableRow>
                 ))}
 
               {!loading && !error && users.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={2} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                     Aucun utilisateur trouve.
                   </TableCell>
                 </TableRow>
