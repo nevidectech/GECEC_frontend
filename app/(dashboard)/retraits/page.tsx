@@ -1,11 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Table,
   TableBody,
@@ -15,15 +14,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -31,44 +21,162 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { StatusBadge } from "@/components/status-badge"
-import { Separator } from "@/components/ui/separator"
+import { createClient } from "@/lib/supabase/client"
+import type { Carnet, Client, Withdrawal } from "@/types/db"
 import {
   ArrowUpFromLine,
   Search,
   Download,
   Filter,
-  ShieldCheck,
   AlertTriangle,
   Printer,
   CheckCircle2,
 } from "lucide-react"
 
-const retraits = [
-  { id: "RET-2024-0234", carnet: "C-2024-1847", client: "Marie Kabila", montant: "500,000 FC", date: "10/02/2024", validateur: "Admin Dupont", status: "completed" },
-  { id: "RET-2024-0233", carnet: "C-2024-1846", client: "Pierre Mutombo", montant: "$200", date: "09/02/2024", validateur: "-", status: "pending" },
-  { id: "RET-2024-0232", carnet: "C-2024-1845", client: "Josephine Kayembe", montant: "300,000 FC", date: "08/02/2024", validateur: "Admin Kalala", status: "completed" },
-  { id: "RET-2024-0231", carnet: "C-2024-1841", client: "Elisabeth Kasongo", montant: "1,000,000 FC", date: "07/02/2024", validateur: "-", status: "rejected" },
-  { id: "RET-2024-0230", carnet: "C-2024-1840", client: "Claude Mbuyi", montant: "$500", date: "06/02/2024", validateur: "Admin Dupont", status: "completed" },
-  { id: "RET-2024-0229", carnet: "C-2024-1843", client: "Francoise Mwamba", montant: "$1,000", date: "05/02/2024", validateur: "-", status: "pending" },
-]
+const currencyMap: Record<number, string> = {
+  0: "CDF",
+  1: "USD",
+  2: "EUR",
+}
 
-const statusMap: Record<string, { status: "success" | "warning" | "error"; label: string }> = {
+type WithdrawalStatus = "completed" | "rejected"
+
+type WithdrawalView = {
+  id: string
+  reference: string
+  carnet: string
+  client: string
+  amount: number
+  currency: number
+  withdrawalDate: string
+  date: string
+  validator: string
+  status: WithdrawalStatus
+}
+
+const statusMap: Record<WithdrawalStatus, { status: "success" | "warning" | "error"; label: string }> = {
   completed: { status: "success", label: "Valide" },
-  pending: { status: "warning", label: "En attente" },
   rejected: { status: "error", label: "Rejete" },
 }
 
+function formatDate(value: string | null) {
+  if (!value) return "-"
+  return new Intl.DateTimeFormat("fr-FR").format(new Date(value))
+}
+
+function formatMoney(value: number, currency: number) {
+  const label = currencyMap[currency] ?? `CUR-${currency}`
+  const locale = label === "USD" || label === "EUR" ? "en-US" : "fr-FR"
+  return `${new Intl.NumberFormat(locale).format(value)} ${label}`
+}
+
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${date.getMonth()}`
+}
+
+function formatMonthlyTotals(entries: WithdrawalView[]) {
+  const totals = new Map<number, number>()
+  entries.forEach((entry) => {
+    const current = totals.get(entry.currency) ?? 0
+    totals.set(entry.currency, current + entry.amount)
+  })
+
+  if (totals.size === 0) return "0"
+
+  return Array.from(totals.entries())
+    .map(([currency, amount]) => formatMoney(amount, currency))
+    .join(" / ")
+}
+
 export default function RetraitsPage() {
+  const supabase = useMemo(() => createClient(), [])
+  const [withdrawals, setWithdrawals] = useState<WithdrawalView[]>([])
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
 
-  const filtered = retraits.filter((r) => {
+  useEffect(() => {
+    async function fetchWithdrawals() {
+      setLoading(true)
+      setFetchError(null)
+
+      const [withdrawalsRes, carnetsRes, clientsRes] = await Promise.all([
+        supabase.from("withdrawal").select("*").order("withdrawal_date", { ascending: false }),
+        supabase.from("carnet").select("id, number, client_code"),
+        supabase.from("client").select("code, first_name, last_name"),
+      ])
+
+      if (withdrawalsRes.error) {
+        setFetchError(withdrawalsRes.error.message)
+        setWithdrawals([])
+        setLoading(false)
+        return
+      }
+
+      if (carnetsRes.error) {
+        setFetchError(carnetsRes.error.message)
+      }
+      if (clientsRes.error) {
+        setFetchError(clientsRes.error.message)
+      }
+
+      const carnetMap = new Map(
+        ((carnetsRes.data ?? []) as Array<Pick<Carnet, "id" | "number" | "client_code">>).map((carnet) => [
+          carnet.id,
+          carnet,
+        ]),
+      )
+      const clientMap = new Map(
+        ((clientsRes.data ?? []) as Array<Pick<Client, "code" | "first_name" | "last_name">>).map((client) => [
+          client.code,
+          `${client.first_name} ${client.last_name}`.trim(),
+        ]),
+      )
+
+      const mapped = ((withdrawalsRes.data ?? []) as Withdrawal[]).map((item, index) => {
+        const carnet = carnetMap.get(item.carnet_id)
+        const clientName = carnet?.client_code ? clientMap.get(carnet.client_code) : null
+        const status: WithdrawalStatus = item.deleted_by ? "rejected" : "completed"
+
+        return {
+          id: item.id,
+          reference: `RET-${new Date(item.withdrawal_date).getFullYear()}-${String(index + 1).padStart(4, "0")}`,
+          carnet: carnet?.number ?? item.carnet_id,
+          client: clientName ?? carnet?.client_code ?? "-",
+          amount: Number(item.amount ?? 0),
+          currency: item.currency,
+          withdrawalDate: item.withdrawal_date,
+          date: formatDate(item.withdrawal_date),
+          validator: item.updated_by ?? item.created_by,
+          status,
+        } satisfies WithdrawalView
+      })
+
+      setWithdrawals(mapped)
+      setLoading(false)
+    }
+
+    void fetchWithdrawals()
+  }, [supabase])
+
+  const filtered = withdrawals.filter((item) => {
     const matchSearch =
-      r.id.toLowerCase().includes(search.toLowerCase()) ||
-      r.client.toLowerCase().includes(search.toLowerCase())
-    const matchStatus = statusFilter === "all" || r.status === statusFilter
+      item.reference.toLowerCase().includes(search.toLowerCase()) ||
+      item.client.toLowerCase().includes(search.toLowerCase()) ||
+      item.carnet.toLowerCase().includes(search.toLowerCase())
+    const matchStatus = statusFilter === "all" || item.status === statusFilter
     return matchSearch && matchStatus
   })
+
+  const now = new Date()
+  const completedMonth = withdrawals.filter(
+    (item) => item.status === "completed" && monthKey(new Date(item.withdrawalDate)) === monthKey(now),
+  )
+  const rejectedMonth = withdrawals.filter(
+    (item) => item.status === "rejected" && monthKey(new Date(item.withdrawalDate)) === monthKey(now),
+  )
+  const totalMonthLabel = formatMonthlyTotals(completedMonth)
 
   return (
     <>
@@ -78,69 +186,13 @@ export default function RetraitsPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Retraits</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Gestion securisee des retraits avec double validation
+              Historique des retraits enregistres
             </p>
           </div>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <ArrowUpFromLine className="h-4 w-4" />
-                Nouveau retrait
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Nouveau retrait</DialogTitle>
-                <DialogDescription>
-                  Initier un retrait. Necessite une double validation.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex flex-col gap-4 py-4">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="carnet-ref">Reference carnet</Label>
-                  <Input id="carnet-ref" placeholder="C-2024-XXXX" />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="montant">Montant</Label>
-                  <Input id="montant" type="number" placeholder="0" />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="devise">Devise</Label>
-                  <Select>
-                    <SelectTrigger id="devise">
-                      <SelectValue placeholder="Choisir" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CDF">CDF (Franc Congolais)</SelectItem>
-                      <SelectItem value="USD">USD (Dollar)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="motif">Motif</Label>
-                  <Input id="motif" placeholder="Raison du retrait" />
-                </div>
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-                    <div className="text-xs text-amber-700 dark:text-amber-300">
-                      <p className="font-medium">Double validation requise</p>
-                      <p className="mt-0.5 text-amber-600 dark:text-amber-400">
-                        Ce retrait devra etre valide par un second administrateur.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline">Annuler</Button>
-                <Button className="gap-1.5">
-                  <ShieldCheck className="h-4 w-4" />
-                  Soumettre
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button className="gap-2" disabled>
+            <ArrowUpFromLine className="h-4 w-4" />
+            Nouveau retrait
+          </Button>
         </div>
 
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
@@ -151,7 +203,7 @@ export default function RetraitsPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Valides ce mois</p>
-                <p className="text-xl font-bold text-foreground">23</p>
+                <p className="text-xl font-bold text-foreground">{completedMonth.length}</p>
               </div>
             </CardContent>
           </Card>
@@ -161,8 +213,8 @@ export default function RetraitsPage() {
                 <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">En attente</p>
-                <p className="text-xl font-bold text-foreground">5</p>
+                <p className="text-sm text-muted-foreground">Rejetes ce mois</p>
+                <p className="text-xl font-bold text-foreground">{rejectedMonth.length}</p>
               </div>
             </CardContent>
           </Card>
@@ -173,7 +225,7 @@ export default function RetraitsPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Montant total (mois)</p>
-                <p className="text-xl font-bold text-foreground">3,250,000 FC</p>
+                <p className="text-xl font-bold text-foreground">{totalMonthLabel}</p>
               </div>
             </CardContent>
           </Card>
@@ -201,7 +253,6 @@ export default function RetraitsPage() {
                   <SelectContent>
                     <SelectItem value="all">Tous</SelectItem>
                     <SelectItem value="completed">Valide</SelectItem>
-                    <SelectItem value="pending">En attente</SelectItem>
                     <SelectItem value="rejected">Rejete</SelectItem>
                   </SelectContent>
                 </Select>
@@ -228,39 +279,60 @@ export default function RetraitsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((retrait) => (
-                    <TableRow key={retrait.id}>
-                      <TableCell className="font-mono text-sm font-medium text-foreground">{retrait.id}</TableCell>
-                      <TableCell className="font-mono text-sm text-primary">{retrait.carnet}</TableCell>
-                      <TableCell className="font-medium text-foreground">{retrait.client}</TableCell>
-                      <TableCell className="font-semibold tabular-nums text-red-600 dark:text-red-400">
-                        -{retrait.montant}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{retrait.date}</TableCell>
-                      <TableCell className="text-muted-foreground">{retrait.validateur}</TableCell>
-                      <TableCell>
-                        <StatusBadge
-                          status={statusMap[retrait.status].status}
-                          label={statusMap[retrait.status].label}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {retrait.status === "pending" ? (
-                          <div className="flex items-center justify-end gap-1">
-                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
-                              <ShieldCheck className="h-3 w-3" />
-                              Valider
-                            </Button>
-                          </div>
-                        ) : retrait.status === "completed" ? (
-                          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1">
-                            <Printer className="h-3 w-3" />
-                            Recu
-                          </Button>
-                        ) : null}
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                        Chargement des retraits...
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )}
+
+                  {!loading && fetchError && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-8 text-center text-red-500">
+                        {fetchError}
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {!loading &&
+                    !fetchError &&
+                    filtered.map((retrait) => (
+                      <TableRow key={retrait.id}>
+                        <TableCell className="font-mono text-sm font-medium text-foreground">
+                          {retrait.reference}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm text-primary">{retrait.carnet}</TableCell>
+                        <TableCell className="font-medium text-foreground">{retrait.client}</TableCell>
+                        <TableCell className="font-semibold tabular-nums text-red-600 dark:text-red-400">
+                          -{formatMoney(retrait.amount, retrait.currency)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{retrait.date}</TableCell>
+                        <TableCell className="text-muted-foreground font-mono text-xs">{retrait.validator}</TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            status={statusMap[retrait.status].status}
+                            label={statusMap[retrait.status].label}
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {retrait.status === "completed" ? (
+                            <Button size="sm" variant="ghost" className="h-7 text-xs gap-1">
+                              <Printer className="h-3 w-3" />
+                              Recu
+                            </Button>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+
+                  {!loading && !fetchError && filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                        Aucun retrait trouve.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>

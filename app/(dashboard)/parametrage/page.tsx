@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ParametrageUsersTab } from "@/components/parametrage-users-tab"
 import { ParametrageZonesTab } from "@/components/parametrage-zones-tab"
 import { ParametrageAffectationTab } from "@/components/parametrage-affectation-tab"
+import { ParametrageGlobalTab } from "@/components/parametrage-global-tab"
 import {
   Table,
   TableBody,
@@ -38,6 +39,7 @@ import {
   Edit,
   MapPin,
   Link2,
+  SlidersHorizontal,
 } from "lucide-react"
 
 const remunerationTiers = [
@@ -87,6 +89,10 @@ export default function ParametragePage() {
               <Link2 className="h-3.5 w-3.5" />
               Affectation
             </TabsTrigger>
+            <TabsTrigger value="global" className="gap-1.5">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Global
+            </TabsTrigger>
             <TabsTrigger value="currency" className="gap-1.5">
               <DollarSign className="h-3.5 w-3.5" />
               Devises
@@ -111,6 +117,10 @@ export default function ParametragePage() {
 
           <TabsContent value="affectation" className="mt-6">
             <ParametrageAffectationTab />
+          </TabsContent>
+
+          <TabsContent value="global" className="mt-6">
+            <ParametrageGlobalTab />
           </TabsContent>
 
           <TabsContent value="organization" className="mt-6">

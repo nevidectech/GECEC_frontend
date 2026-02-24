@@ -3,6 +3,85 @@ export type ProfileRole = "admin" | "collector" | "other"
 export interface Database {
   public: {
     Tables: {
+      withdrawal: {
+        Row: {
+          id: string
+          carnet_id: string
+          withdrawal_date: string
+          amount: number
+          currency: number
+          withdrawal_type: number
+          order_type: number
+          card_number: string | null
+          proof_url: string | null
+          deleted_by: string | null
+          created_at: string | null
+          updated_at: string | null
+          created_by: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          carnet_id: string
+          withdrawal_date: string
+          amount: number
+          currency?: number
+          withdrawal_type?: number
+          order_type?: number
+          card_number?: string | null
+          proof_url?: string | null
+          deleted_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          created_by: string
+          updated_by?: string | null
+        }
+        Update: {
+          carnet_id?: string
+          withdrawal_date?: string
+          amount?: number
+          currency?: number
+          withdrawal_type?: number
+          order_type?: number
+          card_number?: string | null
+          proof_url?: string | null
+          deleted_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          created_by?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      global_variable: {
+        Row: {
+          id: string
+          group: string
+          key: string
+          value: string
+          description: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          group: string
+          key: string
+          value: string
+          description?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          group?: string
+          key?: string
+          value?: string
+          description?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       client: {
         Row: {
           id: string
@@ -338,3 +417,5 @@ export type Carnet = Database["public"]["Tables"]["carnet"]["Row"]
 export type Cotisation = Database["public"]["Tables"]["cotisation"]["Row"]
 export type CarnetDuplicate = Database["public"]["Tables"]["carnet_duplicate"]["Row"]
 export type Client = Database["public"]["Tables"]["client"]["Row"]
+export type GlobalVariable = Database["public"]["Tables"]["global_variable"]["Row"]
+export type Withdrawal = Database["public"]["Tables"]["withdrawal"]["Row"]

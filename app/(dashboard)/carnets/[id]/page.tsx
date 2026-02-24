@@ -10,8 +10,27 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusBadge } from "@/components/status-badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { createClient } from "@/lib/supabase/client"
-import type { Carnet, CarnetDuplicate, Cotisation } from "@/types/db"
+import type { Carnet, CarnetDuplicate, Cotisation, Withdrawal } from "@/types/db"
+import { createWithdrawalAction } from "@/actions/withdrawals"
 import {
   ArrowUpFromLine,
   Copy,
@@ -48,15 +67,22 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
   const [carnet, setCarnet] = useState<Carnet | null>(null)
   const [cotisations, setCotisations] = useState<Cotisation[]>([])
   const [duplicatas, setDuplicatas] = useState<CarnetDuplicate[]>([])
+  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [withdrawalOpen, setWithdrawalOpen] = useState(false)
+  const [withdrawalSubmitting, setWithdrawalSubmitting] = useState(false)
+  const [withdrawalForm, setWithdrawalForm] = useState({
+    orderType: "1",
+    proofUrl: "",
+  })
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true)
       setError(null)
 
-      const [carnetRes, cotisationRes, duplicataRes] = await Promise.all([
+      const [carnetRes, cotisationRes, duplicataRes, withdrawalRes] = await Promise.all([
         supabase.from("carnet").select("*").eq("id", id).single(),
         supabase
           .from("cotisation")
@@ -68,6 +94,11 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
           .select("*")
           .eq("original_carnet_id", id)
           .order("created_at", { ascending: false }),
+        supabase
+          .from("withdrawal")
+          .select("*")
+          .eq("carnet_id", id)
+          .order("withdrawal_date", { ascending: false }),
       ])
 
       if (carnetRes.error) {
@@ -91,6 +122,13 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
         setDuplicatas((duplicataRes.data ?? []) as CarnetDuplicate[])
       }
 
+      if (withdrawalRes.error) {
+        setError(withdrawalRes.error.message)
+        setWithdrawals([])
+      } else {
+        setWithdrawals((withdrawalRes.data ?? []) as Withdrawal[])
+      }
+
       setLoading(false)
     }
 
@@ -98,13 +136,65 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
   }, [id, supabase])
 
   const cotisationsTotal = cotisations.reduce((sum, item) => sum + Number(item.amount ?? 0), 0)
+  const withdrawalsTotal = withdrawals.reduce((sum, item) => sum + Number(item.amount ?? 0), 0)
   const averageCotisation = cotisations.length > 0 ? cotisationsTotal / cotisations.length : 0
   const baseAmount = Number(carnet?.initial_amount ?? 0)
-  const estimatedBalance = baseAmount + cotisationsTotal
+  const estimatedBalance = baseAmount + cotisationsTotal - withdrawalsTotal
+  const withdrawableAmount = cotisationsTotal - baseAmount
   const progress = Math.max(0, Math.min(100, (estimatedBalance / Math.max(baseAmount, 1)) * 100))
   const headerNumber = carnet?.number ?? id
   const headerStatus = carnet?.is_archived ? "closed" : "active"
   const headerCurrency = carnet?.currency ?? 0
+
+  const orderTypeLabel: Record<number, string> = {
+    1: "Titulaire",
+    2: "Collecteur",
+  }
+  const withdrawalTypeLabel: Record<number, string> = {
+    0: "Normal",
+    1: "Anticipe",
+  }
+
+  async function handleCreateWithdrawal(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setWithdrawalSubmitting(true)
+    setError(null)
+
+    const result = await createWithdrawalAction({
+      carnetId: id,
+      orderType: Number(withdrawalForm.orderType) as 1 | 2,
+      proofUrl: withdrawalForm.proofUrl || undefined,
+    })
+
+    if (!result.success) {
+      setError(result.error ?? "Impossible de creer le retrait")
+      setWithdrawalSubmitting(false)
+      return
+    }
+
+    const [carnetRes, withdrawalRes] = await Promise.all([
+      supabase.from("carnet").select("*").eq("id", id).single(),
+      supabase
+        .from("withdrawal")
+        .select("*")
+        .eq("carnet_id", id)
+        .order("withdrawal_date", { ascending: false }),
+    ])
+
+    if (!carnetRes.error) {
+      setCarnet(carnetRes.data as Carnet)
+    }
+    if (!withdrawalRes.error) {
+      setWithdrawals((withdrawalRes.data ?? []) as Withdrawal[])
+    }
+
+    setWithdrawalOpen(false)
+    setWithdrawalSubmitting(false)
+    setWithdrawalForm({
+      orderType: "1",
+      proofUrl: "",
+    })
+  }
 
   return (
     <>
@@ -150,10 +240,79 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
               <Printer className="h-3.5 w-3.5" />
               Imprimer
             </Button>
-            <Button size="sm" className="gap-1.5">
-              <ArrowUpFromLine className="h-3.5 w-3.5" />
-              Retrait
-            </Button>
+            {!carnet?.is_archived && (
+              <Dialog open={withdrawalOpen} onOpenChange={setWithdrawalOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="gap-1.5">
+                    <ArrowUpFromLine className="h-3.5 w-3.5" />
+                    Retrait
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Nouveau retrait</DialogTitle>
+                    <DialogDescription>
+                      Montant calcule automatiquement: {formatMoney(Math.max(0, withdrawableAmount), headerCurrency)}
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <form className="space-y-4" onSubmit={handleCreateWithdrawal}>
+                    <div className="space-y-2">
+                      <Label>Ordre de retrait</Label>
+                      <Select
+                        value={withdrawalForm.orderType}
+                        onValueChange={(value) =>
+                          setWithdrawalForm((current) => ({ ...current, orderType: value }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selectionner le type d'ordre" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">Titulaire (lui-meme)</SelectItem>
+                          <SelectItem value="2">Collecteur</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Type de retrait</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Calcule automatiquement (1=anticipe avant fin du mois, 0=normal fin de mois)
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Numero de carte</Label>
+                      <p className="text-sm text-muted-foreground font-mono">
+                        {carnet?.number ?? "-"}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="proof-url">URL preuve (optionnel)</Label>
+                      <Input
+                        id="proof-url"
+                        placeholder="https://..."
+                        value={withdrawalForm.proofUrl}
+                        onChange={(event) =>
+                          setWithdrawalForm((current) => ({ ...current, proofUrl: event.target.value }))
+                        }
+                      />
+                    </div>
+
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setWithdrawalOpen(false)}>
+                        Annuler
+                      </Button>
+                      <Button type="submit" disabled={withdrawalSubmitting || withdrawableAmount <= 0}>
+                        {withdrawalSubmitting ? "Creation..." : "Valider retrait"}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         </div>
 
@@ -195,9 +354,9 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 text-muted-foreground mb-1">
                     <FileText className="h-4 w-4" />
-                    <span className="text-xs font-medium">Duplicatas</span>
+                    <span className="text-xs font-medium">Retraits</span>
                   </div>
-                  <p className="text-lg font-bold text-foreground">{duplicatas.length}</p>
+                  <p className="text-lg font-bold text-foreground">{withdrawals.length}</p>
                 </CardContent>
               </Card>
             </div>
@@ -262,14 +421,52 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
                     </div>
                   </TabsContent>
                   <TabsContent value="retraits" className="mt-0">
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-3">
-                        <ArrowUpFromLine className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                      <p className="text-sm font-medium text-foreground">Aucun retrait</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Ce carnet n&apos;a pas encore eu de retrait
-                      </p>
+                    <div className="rounded-lg border overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="font-semibold">Date</TableHead>
+                            <TableHead className="font-semibold">Montant</TableHead>
+                            <TableHead className="font-semibold">Type</TableHead>
+                            <TableHead className="font-semibold">Ordre</TableHead>
+                            <TableHead className="font-semibold">Carte</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {loading && (
+                            <TableRow>
+                              <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                                Chargement des retraits...
+                              </TableCell>
+                            </TableRow>
+                          )}
+
+                          {!loading &&
+                            withdrawals.map((item) => (
+                              <TableRow key={item.id}>
+                                <TableCell className="font-mono text-sm">
+                                  {formatDate(item.withdrawal_date)}
+                                </TableCell>
+                                <TableCell className="font-semibold text-red-600 dark:text-red-400">
+                                  -{formatMoney(Number(item.amount), item.currency)}
+                                </TableCell>
+                                <TableCell>{withdrawalTypeLabel[item.withdrawal_type] ?? item.withdrawal_type}</TableCell>
+                                <TableCell>{orderTypeLabel[item.order_type] ?? item.order_type}</TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {item.card_number ?? "-"}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+
+                          {!loading && withdrawals.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                                Aucun retrait pour ce carnet.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
                     </div>
                   </TabsContent>
                   <TabsContent value="duplicatas" className="mt-0">

@@ -299,10 +299,12 @@ export default function CarnetsPage() {
                               <Copy className="h-4 w-4 mr-2" />
                               Duplicata
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <ArrowUpFromLine className="h-4 w-4 mr-2" />
-                              Retrait
-                            </DropdownMenuItem>
+                            {carnet.status === "active" && (
+                              <DropdownMenuItem>
+                                <ArrowUpFromLine className="h-4 w-4 mr-2" />
+                                Retrait
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
