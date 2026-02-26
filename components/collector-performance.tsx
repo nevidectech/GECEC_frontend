@@ -4,50 +4,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 
-const collectors = [
-  {
-    name: "Patrick Mbuyi",
-    initials: "PM",
-    zone: "Lubumbashi-Centre",
-    collected: 4250000,
-    target: 5000000,
-    clients: 87,
-  },
-  {
-    name: "Sarah Kalala",
-    initials: "SK",
-    zone: "Lubumbashi-Est",
-    collected: 3800000,
-    target: 4000000,
-    clients: 72,
-  },
-  {
-    name: "David Kasongo",
-    initials: "DK",
-    zone: "Likasi",
-    collected: 2900000,
-    target: 4000000,
-    clients: 58,
-  },
-  {
-    name: "Grace Mwamba",
-    initials: "GM",
-    zone: "Kolwezi",
-    collected: 2100000,
-    target: 3500000,
-    clients: 45,
-  },
-  {
-    name: "Felix Ilunga",
-    initials: "FI",
-    zone: "Kipushi",
-    collected: 1650000,
-    target: 2500000,
-    clients: 34,
-  },
-]
+interface CollectorPerfProps {
+  name: string
+  initials: string
+  zone: string
+  collected: number
+  target: number
+  clients: number
+}
 
-export function CollectorPerformance() {
+export function CollectorPerformance({ collectors }: { collectors: CollectorPerfProps[] }) {
   return (
     <Card>
       <CardHeader>

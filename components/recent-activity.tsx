@@ -5,77 +5,30 @@ import { StatusBadge } from "@/components/status-badge"
 import { ArrowDownToLine, ArrowUpFromLine, UserPlus, BookOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const activities = [
-  {
-    id: 1,
-    type: "depot" as const,
-    description: "Depot sur carnet #C-2024-1847",
-    client: "Marie Kabila",
-    amount: "+250,000 FC",
-    time: "il y a 5 min",
-    status: "success" as const,
-  },
-  {
-    id: 2,
-    type: "retrait" as const,
-    description: "Retrait valide carnet #C-2024-0923",
-    client: "Pierre Mutombo",
-    amount: "-180,000 FC",
-    time: "il y a 12 min",
-    status: "warning" as const,
-  },
-  {
-    id: 3,
-    type: "nouveau" as const,
-    description: "Nouveau client enregistre",
-    client: "Josephine Kayembe",
-    amount: null,
-    time: "il y a 25 min",
-    status: "info" as const,
-  },
-  {
-    id: 4,
-    type: "carnet" as const,
-    description: "Carnet #C-2024-1848 cree",
-    client: "Albert Tshisekedi",
-    amount: "50,000 FC",
-    time: "il y a 1h",
-    status: "success" as const,
-  },
-  {
-    id: 5,
-    type: "depot" as const,
-    description: "Depot collecte terrain",
-    client: "Zone Lubumbashi-Est",
-    amount: "+1,850,000 FC",
-    time: "il y a 2h",
-    status: "success" as const,
-  },
-]
+interface ActivityProps {
+  id: string
+  type: "deposit" | "client" | "carnet" | "withdrawal"
+  title: string
+  subtitle: string
+  time: string
+  amount?: string
+}
 
 const iconMap = {
-  depot: ArrowDownToLine,
-  retrait: ArrowUpFromLine,
-  nouveau: UserPlus,
+  deposit: ArrowDownToLine,
+  withdrawal: ArrowUpFromLine,
+  client: UserPlus,
   carnet: BookOpen,
 }
 
 const iconColorMap = {
-  depot: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10",
-  retrait: "text-amber-600 dark:text-amber-400 bg-amber-500/10",
-  nouveau: "text-sky-600 dark:text-sky-400 bg-sky-500/10",
+  deposit: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10",
+  withdrawal: "text-amber-600 dark:text-amber-400 bg-amber-500/10",
+  client: "text-sky-600 dark:text-sky-400 bg-sky-500/10",
   carnet: "text-primary bg-primary/10",
 }
 
-const statusLabelMap = {
-  success: "Complete",
-  warning: "En attente",
-  info: "Nouveau",
-  error: "Erreur",
-  default: "-",
-}
-
-export function RecentActivity() {
+export function RecentActivity({ activities }: { activities: ActivityProps[] }) {
   return (
     <Card>
       <CardHeader>
@@ -99,15 +52,15 @@ export function RecentActivity() {
                 <div className="flex flex-1 flex-col gap-0.5 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium text-foreground truncate">
-                      {activity.description}
+                      {activity.title}
                     </span>
                     <StatusBadge
-                      status={activity.status}
-                      label={statusLabelMap[activity.status]}
+                      status={activity.type === "withdrawal" ? "warning" : "success"}
+                      label={activity.type === "withdrawal" ? "En attente" : "Complété"}
                     />
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{activity.client}</span>
+                    <span>{activity.subtitle}</span>
                     <span>{"/"}</span>
                     <span>{activity.time}</span>
                   </div>
@@ -115,12 +68,12 @@ export function RecentActivity() {
                     <span
                       className={cn(
                         "text-sm font-semibold",
-                        activity.amount.startsWith("+")
+                        activity.amount.startsWith("+") || activity.type === "deposit"
                           ? "text-emerald-600 dark:text-emerald-400"
                           : "text-red-600 dark:text-red-400"
                       )}
                     >
-                      {activity.amount}
+                      {(activity.type === "deposit" && !activity.amount.startsWith("+")) ? `+${activity.amount}` : activity.amount}
                     </span>
                   )}
                 </div>
