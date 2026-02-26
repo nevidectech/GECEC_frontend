@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -19,13 +20,34 @@ import {
 } from "recharts"
 
 interface ChartDataProps {
-  monthlyEvolution: { month: string; depots: number; retraits: number; solde: number }[]
-  weeklyCollections: { day: string; montant: number }[]
+  monthlyEvolution: {
+    month: string;
+    depotsFC: number;
+    retraitsFC: number;
+    depotsUSD: number;
+    retraitsUSD: number;
+  }[]
+  weeklyCollections: { day: string; montantFC: number; montantUSD: number }[]
   geographicDistribution: { name: string; value: number; color: string }[]
 }
 
 export function DashboardCharts({ data }: { data: ChartDataProps }) {
   const { monthlyEvolution, weeklyCollections, geographicDistribution } = data
+  const [currency, setCurrency] = useState<"FC" | "USD">("FC")
+
+  // Evolution chart: show depots/retraits for selected currency
+  const displayData = monthlyEvolution.map(item => ({
+    month: item.month,
+    "Dépôts": currency === "FC" ? item.depotsFC : item.depotsUSD,
+    "Retraits": currency === "FC" ? item.retraitsFC : item.retraitsUSD,
+  }))
+
+  // Weekly chart: both currencies as grouped bars
+  const weeklyDisplay = weeklyCollections.map(item => ({
+    day: item.day,
+    "FC": item.montantFC,
+    "USD": item.montantUSD,
+  }))
 
   function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; name: string; color: string }>; label?: string }) {
     if (active && payload && payload.length) {
@@ -38,7 +60,7 @@ export function DashboardCharts({ data }: { data: ChartDataProps }) {
                 className="inline-block w-2 h-2 rounded-full mr-1.5"
                 style={{ backgroundColor: entry.color }}
               />
-              {entry.name}: {entry.value.toLocaleString("fr-FR")} FC
+              {entry.name}: {entry.value.toLocaleString("fr-FR")} {entry.name === "USD" ? "$" : "FC"}
             </p>
           ))}
         </div>
@@ -47,7 +69,7 @@ export function DashboardCharts({ data }: { data: ChartDataProps }) {
     return null
   }
 
-  function formatFC(value: number) {
+  function formatValue(value: number) {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
     if (value >= 1000) return `${(value / 1000).toFixed(0)}K`
     return value.toString()
@@ -56,9 +78,17 @@ export function DashboardCharts({ data }: { data: ChartDataProps }) {
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="lg:col-span-2">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold">Evolution de l&apos;epargne</CardTitle>
-          <CardDescription>Depots, retraits et solde sur 6 mois</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <div className="flex flex-col gap-1">
+            <CardTitle className="text-base font-semibold">Evolution de l&apos;epargne</CardTitle>
+            <CardDescription>Dépôts et retraits par mois ({new Date().getFullYear()})</CardDescription>
+          </div>
+          <Tabs value={currency} onValueChange={(v) => setCurrency(v as "FC" | "USD")} className="w-[120px]">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="FC">FC</TabsTrigger>
+              <TabsTrigger value="USD">USD</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="evolution" className="w-full">
@@ -69,7 +99,7 @@ export function DashboardCharts({ data }: { data: ChartDataProps }) {
             <TabsContent value="evolution">
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyEvolution}>
+                  <AreaChart data={displayData}>
                     <defs>
                       <linearGradient id="colorDepots" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
@@ -79,16 +109,20 @@ export function DashboardCharts({ data }: { data: ChartDataProps }) {
                         <stop offset="5%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3} />
                         <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0} />
                       </linearGradient>
+                      <linearGradient id="colorSolde" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--chart-3))" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="hsl(var(--chart-3))" stopOpacity={0} />
+                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                     <XAxis dataKey="month" tick={{ fontSize: 12 }} className="text-muted-foreground" />
-                    <YAxis tickFormatter={formatFC} tick={{ fontSize: 12 }} className="text-muted-foreground" />
+                    <YAxis tickFormatter={formatValue} tick={{ fontSize: 12 }} className="text-muted-foreground" />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend />
                     <Area
                       type="monotone"
-                      dataKey="depots"
-                      name="Depots"
+                      dataKey="Dépôts"
+                      name="Dépôts"
                       stroke="hsl(var(--chart-1))"
                       fillOpacity={1}
                       fill="url(#colorDepots)"
@@ -96,7 +130,7 @@ export function DashboardCharts({ data }: { data: ChartDataProps }) {
                     />
                     <Area
                       type="monotone"
-                      dataKey="retraits"
+                      dataKey="Retraits"
                       name="Retraits"
                       stroke="hsl(var(--chart-2))"
                       fillOpacity={1}
@@ -110,16 +144,23 @@ export function DashboardCharts({ data }: { data: ChartDataProps }) {
             <TabsContent value="collections">
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={weeklyCollections}>
+                  <BarChart data={weeklyDisplay}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                     <XAxis dataKey="day" tick={{ fontSize: 12 }} />
-                    <YAxis tickFormatter={formatFC} tick={{ fontSize: 12 }} />
+                    <YAxis tickFormatter={formatValue} tick={{ fontSize: 12 }} />
                     <Tooltip content={<CustomTooltip />} />
+                    <Legend />
                     <Bar
-                      dataKey="montant"
-                      name="Collectes"
+                      dataKey="FC"
+                      name="FC"
                       fill="hsl(var(--chart-1))"
-                      radius={[6, 6, 0, 0]}
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="USD"
+                      name="USD"
+                      fill="hsl(var(--chart-3))"
+                      radius={[4, 4, 0, 0]}
                     />
                   </BarChart>
                 </ResponsiveContainer>

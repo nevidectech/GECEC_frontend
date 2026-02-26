@@ -23,13 +23,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useCurrentUser } from "@/hooks/useCurrentUser"
 
 interface AppHeaderProps {
   breadcrumbs?: { label: string; href?: string }[]
 }
 
 export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
+  const { user } = useCurrentUser()
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-card/80 backdrop-blur-sm px-4">
       <SidebarTrigger className="-ml-1" />
@@ -85,16 +87,35 @@ export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="h-9 gap-2 px-2 rounded-lg">
               <Avatar className="h-7 w-7">
+                {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.username} />}
                 <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                  JD
+                  {user?.initials || "AD"}
                 </AvatarFallback>
               </Avatar>
-              <span className="hidden md:inline text-sm font-medium">Jean D.</span>
+              <span className="hidden md:inline text-sm font-medium">{user?.username || "Chargement..."}</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>Mon compte</DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-56">
+            <div className="flex items-center gap-3 px-2 py-2">
+              <Avatar className="h-10 w-10">
+                {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.username} />}
+                <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
+                  {user?.initials || "AD"}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <p className="font-medium text-sm leading-none">{user?.username || "Utilisateur"}</p>
+                <p className="text-xs text-muted-foreground truncate">{user?.email || ""}</p>
+                {user?.role && (
+                  <p className="text-xs text-muted-foreground">{user.role}</p>
+                )}
+                {user?.zone && (
+                  <p className="text-xs text-muted-foreground">{user.zone}</p>
+                )}
+              </div>
+            </div>
             <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs">Mon compte</DropdownMenuLabel>
             <DropdownMenuItem>Profil</DropdownMenuItem>
             <DropdownMenuItem>Preferences</DropdownMenuItem>
             <DropdownMenuSeparator />
