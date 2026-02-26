@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,7 +33,20 @@ import {
   Clock,
   CheckCircle2,
   Zap,
+  User,
+  Calendar as CalendarIcon,
+  Calculator,
+  Search,
 } from "lucide-react"
+import {
+  listCollectorsAction,
+  getCollectionStatsAction,
+  checkCollectionDepositExistsAction,
+  createCollectionDepositAction,
+  listCollectionDepositsAction
+} from "@/actions/collection-deposits"
+import type { Profile } from "@/types/db"
+import { toast } from "sonner"
 
 const dailyCollections = [
   { time: "08:15", carnet: "C-2024-1847", client: "Marie Kabila", montant: "50,000 FC", mode: "Terrain", synced: true },
@@ -46,6 +59,113 @@ const dailyCollections = [
 
 export default function DepotPage() {
   const [carnetRef, setCarnetRef] = useState("")
+  const [listFilterDate, setListFilterDate] = useState(new Date().toISOString().split('T')[0])
+  const [deposits, setDeposits] = useState<any[]>([])
+  const [loadingDeposits, setLoadingDeposits] = useState(false)
+
+  // States for Collection Deposit
+  const [collectors, setCollectors] = useState<Profile[]>([])
+  const [selectedCollector, setSelectedCollector] = useState("")
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
+  const [stats, setStats] = useState({
+    amountCotisation: 0,
+    amountCarnet: 0,
+    amountDuplicate: 0,
+    amountFicheRetrait: 0,
+    amountCotisationUsd: 0,
+  })
+  const [loadingStats, setLoadingStats] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    async function fetchCollectors() {
+      console.log("Fetching collectors...")
+      const result = await listCollectorsAction()
+      console.log("Fetch collectors result:", result)
+      if (result.success && result.data) {
+        setCollectors(result.data)
+      } else if (!result.success) {
+        toast.error("Erreur lors du chargement des collecteurs: " + result.error)
+      }
+    }
+    fetchCollectors()
+  }, [])
+
+  useEffect(() => {
+    async function fetchDeposits() {
+      setLoadingDeposits(true)
+      const result = await listCollectionDepositsAction(listFilterDate)
+      if (result.success && result.data) {
+        setDeposits(result.data)
+      } else if (!result.success) {
+        toast.error("Erreur lors du chargement de la liste: " + result.error)
+      }
+      setLoadingDeposits(false)
+    }
+    fetchDeposits()
+  }, [listFilterDate])
+
+  const handleFetchStats = async () => {
+    if (!selectedCollector || !selectedDate) {
+      toast.error("Veuillez sélectionner un collecteur et une date")
+      return
+    }
+
+    setLoadingStats(true)
+    const result = await getCollectionStatsAction(selectedCollector, selectedDate)
+    if (result.success && result.data) {
+      setStats(result.data)
+      toast.success("Informations récupérées")
+    } else {
+      toast.error(result.error ?? "Erreur lors de la récupération des informations")
+    }
+    setLoadingStats(false)
+  }
+
+  const handleCreateCollectionDeposit = async () => {
+    if (!selectedCollector || !selectedDate) {
+      toast.error("Veuillez remplir tous les champs")
+      return
+    }
+
+    setSubmitting(true)
+
+    // Check if exists
+    const exists = await checkCollectionDepositExistsAction(selectedCollector, selectedDate)
+    if (exists.success && exists.data) {
+      toast.error("Un dépôt existe déjà pour ce collecteur à cette date")
+      setSubmitting(false)
+      return
+    }
+
+    const result = await createCollectionDepositAction({
+      collectorId: selectedCollector,
+      date: selectedDate,
+      ...stats
+    })
+
+    if (result.success) {
+      toast.success("Dépôt de collecte enregistré avec succès")
+      // Refresh the deposits list if we are on the same filter date
+      if (selectedDate === listFilterDate) {
+        const fetchResult = await listCollectionDepositsAction(listFilterDate)
+        if (fetchResult.success && fetchResult.data) {
+          setDeposits(fetchResult.data)
+        }
+      }
+    } else {
+      toast.error(result.error ?? "Erreur lors de l'enregistrement")
+    }
+    setSubmitting(false)
+  }
+  const totals = deposits.reduce((acc, item) => {
+    acc.cdf += (item.amount_cotisation + item.amount_carnet + item.amount_duplicate + (item.amount_fiche_retrait || 0))
+    acc.usd += (item.amount_cotisation_usd || 0)
+    acc.carnetCdf += item.amount_carnet
+    acc.duplicateCdf += item.amount_duplicate
+    acc.ficheCdf += (item.amount_fiche_retrait || 0)
+    return acc
+  }, { cdf: 0, usd: 0, carnetCdf: 0, duplicateCdf: 0, ficheCdf: 0 })
 
   return (
     <>
@@ -54,7 +174,7 @@ export default function DepotPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Depot & Collecte</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Saisie rapide des depots et suivi des collectes terrain
+            Suivi des collectes terrain et enregistrement des dépôts
           </p>
         </div>
 
@@ -62,11 +182,11 @@ export default function DepotPage() {
           <Card>
             <CardContent className="flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                <ArrowDownToLine className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Collectes jour</p>
-                <p className="text-xl font-bold text-foreground">6</p>
+                <p className="text-sm text-muted-foreground">Collecte CDF</p>
+                <p className="text-xl font-bold text-foreground">{totals.cdf.toLocaleString()} FC</p>
               </div>
             </CardContent>
           </Card>
@@ -76,158 +196,329 @@ export default function DepotPage() {
                 <ArrowDownToLine className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total jour</p>
-                <p className="text-xl font-bold text-foreground">425,000 FC</p>
+                <p className="text-sm text-muted-foreground">Collecte USD</p>
+                <p className="text-xl font-bold text-foreground">${totals.usd.toLocaleString()}</p>
               </div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10">
-                <Wifi className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+                <ScanBarcode className="h-5 w-5 text-sky-600 dark:text-sky-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Synchronise</p>
-                <p className="text-xl font-bold text-foreground">4/6</p>
+                <p className="text-sm text-muted-foreground">Carnets</p>
+                <p className="text-sm font-bold text-foreground">
+                  {totals.carnetCdf.toLocaleString()} FC
+                </p>
               </div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="flex items-center gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
-                <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                <Zap className="h-5 w-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">En attente sync</p>
-                <p className="text-xl font-bold text-foreground">2</p>
+                <p className="text-sm text-muted-foreground">Duplicatas</p>
+                <p className="text-sm font-bold text-foreground">
+                  {totals.duplicateCdf.toLocaleString()} FC
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
+                <Calculator className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Fiche Retrait</p>
+                <p className="text-sm font-bold text-foreground">
+                  {totals.ficheCdf.toLocaleString()} FC
+                </p>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold">Saisie rapide</CardTitle>
-              <CardDescription>Enregistrer un nouveau depot</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="scan-carnet">Reference carnet</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="scan-carnet"
-                    placeholder="C-2024-XXXX"
-                    value={carnetRef}
-                    onChange={(e) => setCarnetRef(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button variant="outline" size="icon" className="shrink-0" title="Scanner code-barres">
-                    <ScanBarcode className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+        <div className="grid gap-6">
+          <Tabs defaultValue="liste" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 max-w-md">
+              <TabsTrigger value="liste">Liste des dépôts</TabsTrigger>
+              <TabsTrigger value="collecte">Dépôt de Collecte</TabsTrigger>
+            </TabsList>
 
-              {carnetRef && (
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <div className="flex flex-col gap-1 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Client</span>
-                      <span className="font-medium text-foreground">Marie Kabila</span>
+            <TabsContent value="liste" className="mt-6">
+              <div className="grid gap-6">
+                <Card className="w-full">
+                  <CardHeader>
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                      <div>
+                        <CardTitle className="text-base font-semibold">Liste des dépôts</CardTitle>
+                        <CardDescription>Consulter les collectes et dépôts enregistre</CardDescription>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <CalendarIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            type="date"
+                            className="pl-9 h-9 w-[160px]"
+                            value={listFilterDate}
+                            onChange={(e) => setListFilterDate(e.target.value)}
+                          />
+                        </div>
+                        <Button variant="outline" size="sm" className="gap-1.5 h-9">
+                          <Zap className="h-3.5 w-3.5" />
+                          Synchroniser
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Solde actuel</span>
-                      <span className="font-medium text-foreground">2,450,000 FC</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Statut</span>
-                      <StatusBadge status="success" label="Actif" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="depot-montant">Montant</Label>
-                <Input id="depot-montant" type="number" placeholder="0" />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="depot-devise">Devise</Label>
-                <Select>
-                  <SelectTrigger id="depot-devise">
-                    <SelectValue placeholder="CDF" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CDF">CDF (Franc Congolais)</SelectItem>
-                    <SelectItem value="USD">USD (Dollar)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Separator />
-
-              <Button className="w-full gap-2">
-                <Send className="h-4 w-4" />
-                Enregistrer le depot
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base font-semibold">Rapport du jour</CardTitle>
-                  <CardDescription>Collectes et depots enregistres aujourd&apos;hui</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <Zap className="h-3.5 w-3.5" />
-                  Synchroniser
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-lg border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="font-semibold">Heure</TableHead>
-                      <TableHead className="font-semibold">Carnet</TableHead>
-                      <TableHead className="font-semibold">Client</TableHead>
-                      <TableHead className="font-semibold">Montant</TableHead>
-                      <TableHead className="font-semibold">Mode</TableHead>
-                      <TableHead className="font-semibold text-center">Sync</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dailyCollections.map((item, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="font-mono text-sm text-muted-foreground">{item.time}</TableCell>
-                        <TableCell className="font-mono text-sm text-primary">{item.carnet}</TableCell>
-                        <TableCell className="font-medium text-foreground">{item.client}</TableCell>
-                        <TableCell className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
-                          +{item.montant}
-                        </TableCell>
-                        <TableCell>
-                          <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
-                            {item.mode}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {item.synced ? (
-                            <Wifi className="h-4 w-4 text-emerald-500 mx-auto" />
-                          ) : (
-                            <WifiOff className="h-4 w-4 text-amber-500 mx-auto" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="rounded-lg border overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="font-semibold">Collecteur</TableHead>
+                            <TableHead className="font-semibold text-right">Cotisations</TableHead>
+                            <TableHead className="font-semibold text-right">Carnets</TableHead>
+                            <TableHead className="font-semibold text-right">Duplicatas</TableHead>
+                            <TableHead className="font-semibold text-right">Fiche Retrait</TableHead>
+                            <TableHead className="font-semibold text-right">Total FC</TableHead>
+                            <TableHead className="font-semibold text-right">Total USD</TableHead>
+                            <TableHead className="font-semibold text-center">Statut</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {loadingDeposits && (
+                            <TableRow>
+                              <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                                Chargement des dépôts...
+                              </TableCell>
+                            </TableRow>
                           )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                          {!loadingDeposits && deposits.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                                Aucun dépôt enregistré pour cette date.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {!loadingDeposits && deposits.map((item, i) => {
+                            const totalFc = item.amount_cotisation + item.amount_carnet + item.amount_duplicate + (item.amount_fiche_retrait || 0);
+                            const totalUsd = item.amount_cotisation_usd || 0;
+                            return (
+                              <TableRow key={item.id || i}>
+                                <TableCell className="font-medium">
+                                  {item.collector?.username || item.collector?.email || "Inconnu"}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {item.amount_cotisation.toLocaleString()} FC / ${item.amount_cotisation_usd}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {item.amount_carnet.toLocaleString()} FC
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {item.amount_duplicate.toLocaleString()} FC
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {(item.amount_fiche_retrait || 0).toLocaleString()} FC
+                                </TableCell>
+                                <TableCell className="text-right font-bold text-primary">
+                                  {totalFc.toLocaleString()} FC
+                                </TableCell>
+                                <TableCell className="text-right font-bold text-primary">
+                                  ${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <StatusBadge
+                                    status={item.status === 'validated' ? 'success' : 'pending'}
+                                    label={item.status === 'validated' ? 'Validé' : 'En attente'}
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
-            </CardContent>
-          </Card>
+            </TabsContent>
+
+            <TabsContent value="collecte" className="mt-6">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold">Récapitulatif de Collecte</CardTitle>
+                    <CardDescription>Enregistrer le montant total collecté par un agent</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-6">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="flex flex-col gap-2">
+                        <Label>Collecteur</Label>
+                        <Select value={selectedCollector} onValueChange={setSelectedCollector}>
+                          <SelectTrigger>
+                            <User className="h-4 w-4 mr-2 text-muted-foreground" />
+                            <SelectValue placeholder="Sélectionner..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {collectors.map((c) => (
+                              <SelectItem key={c.id} value={c.user_id}>
+                                {c.username || c.email}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label>Date de collecte</Label>
+                        <div className="relative">
+                          <CalendarIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            type="date"
+                            className="pl-9"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="secondary"
+                      className="gap-2"
+                      onClick={handleFetchStats}
+                      disabled={loadingStats}
+                    >
+                      <Calculator className="h-4 w-4" />
+                      {loadingStats ? "Chargement..." : "Récupérer les informations du carnet"}
+                    </Button>
+
+                    <Separator />
+
+                    <div className="grid gap-4">
+                      <div className="flex flex-col gap-2">
+                        <Label>Montant cotisations des carnets</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              placeholder="0"
+                              className="pr-12"
+                              value={stats.amountCotisation}
+                              onChange={(e) => setStats({ ...stats, amountCotisation: Number(e.target.value) })}
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground">FC</span>
+                          </div>
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              placeholder="0.00"
+                              className="pr-12"
+                              value={stats.amountCotisationUsd}
+                              onChange={(e) => setStats({ ...stats, amountCotisationUsd: Number(e.target.value) })}
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground">USD</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <Label>Montant carnet (nouveaux vendus)</Label>
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            className="pr-12"
+                            value={stats.amountCarnet}
+                            onChange={(e) => setStats({ ...stats, amountCarnet: Number(e.target.value) })}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground">FC</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <Label>Montant duplicata carnet</Label>
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            className="pr-12"
+                            value={stats.amountDuplicate}
+                            onChange={(e) => setStats({ ...stats, amountDuplicate: Number(e.target.value) })}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground">FC</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <Label>Montant fiche de retrait</Label>
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            className="pr-12"
+                            value={stats.amountFicheRetrait}
+                            onChange={(e) => setStats({ ...stats, amountFicheRetrait: Number(e.target.value) })}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground">FC</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg bg-primary/5 p-4 border border-primary/10">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="font-medium">Total FC à déposer</span>
+                          <span className="font-bold text-primary">
+                            {(stats.amountCotisation + stats.amountCarnet + stats.amountDuplicate + stats.amountFicheRetrait).toLocaleString()} FC
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="font-medium">Total USD à déposer</span>
+                          <span className="font-bold text-primary">
+                            {(stats.amountCotisationUsd).toLocaleString(undefined, { minimumFractionDigits: 2 })} USD
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button
+                      className="w-full gap-2 h-11"
+                      onClick={handleCreateCollectionDeposit}
+                      disabled={submitting}
+                    >
+                      <Send className="h-4 w-4" />
+                      {submitting ? "Enregistrement..." : "Enregistrer le dépôt de collecte"}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <div className="flex flex-col gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base font-semibold">Conseils</CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-sm text-muted-foreground space-y-3">
+                      <p>
+                        Le système vérifie automatiquement si un dépôt a déjà été enregistré pour ce collecteur à la date sélectionnée.
+                      </p>
+                      <p>
+                        Les montants récupérés correspondent aux opérations déjà saisies individuellement dans le système pour cet agent.
+                      </p>
+                      <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-medium">
+                        <Clock className="h-4 w-4" />
+                        <span>Validation par le caissier requise après enregistrement.</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </>
