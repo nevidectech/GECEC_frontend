@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -18,65 +19,76 @@ import {
   Legend,
 } from "recharts"
 
-const monthlyData = [
-  { month: "Jan", depots: 4200000, retraits: 1800000, solde: 12500000 },
-  { month: "Fev", depots: 3800000, retraits: 2100000, solde: 14200000 },
-  { month: "Mar", depots: 5100000, retraits: 1500000, solde: 17800000 },
-  { month: "Avr", depots: 4700000, retraits: 2400000, solde: 20100000 },
-  { month: "Mai", depots: 5500000, retraits: 1900000, solde: 23700000 },
-  { month: "Jun", depots: 4900000, retraits: 2200000, solde: 24850000 },
-]
+interface ChartDataProps {
+  monthlyEvolution: {
+    month: string;
+    depotsFC: number;
+    retraitsFC: number;
+    depotsUSD: number;
+    retraitsUSD: number;
+  }[]
+  weeklyCollections: { day: string; montantFC: number; montantUSD: number }[]
+  geographicDistribution: { name: string; value: number; color: string }[]
+}
 
-const weeklyCollections = [
-  { day: "Lun", montant: 850000 },
-  { day: "Mar", montant: 1200000 },
-  { day: "Mer", montant: 950000 },
-  { day: "Jeu", montant: 1100000 },
-  { day: "Ven", montant: 1350000 },
-  { day: "Sam", montant: 780000 },
-  { day: "Dim", montant: 320000 },
-]
+export function DashboardCharts({ data }: { data: ChartDataProps }) {
+  const { monthlyEvolution, weeklyCollections, geographicDistribution } = data
+  const [currency, setCurrency] = useState<"FC" | "USD">("FC")
 
-const distributionData = [
-  { name: "Lubumbashi", value: 45, color: "hsl(var(--chart-1))" },
-  { name: "Likasi", value: 25, color: "hsl(var(--chart-2))" },
-  { name: "Kolwezi", value: 18, color: "hsl(var(--chart-3))" },
-  { name: "Kipushi", value: 12, color: "hsl(var(--chart-4))" },
-]
+  // Evolution chart: show depots/retraits for selected currency
+  const displayData = monthlyEvolution.map(item => ({
+    month: item.month,
+    "Dépôts": currency === "FC" ? item.depotsFC : item.depotsUSD,
+    "Retraits": currency === "FC" ? item.retraitsFC : item.retraitsUSD,
+  }))
 
-function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; name: string; color: string }>; label?: string }) {
-  if (active && payload && payload.length) {
-    return (
-      <div className="rounded-lg border bg-card p-3 shadow-lg">
-        <p className="text-sm font-medium text-foreground mb-1">{label}</p>
-        {payload.map((entry, index) => (
-          <p key={index} className="text-xs text-muted-foreground">
-            <span
-              className="inline-block w-2 h-2 rounded-full mr-1.5"
-              style={{ backgroundColor: entry.color }}
-            />
-            {entry.name}: {entry.value.toLocaleString("fr-FR")} FC
-          </p>
-        ))}
-      </div>
-    )
+  // Weekly chart: both currencies as grouped bars
+  const weeklyDisplay = weeklyCollections.map(item => ({
+    day: item.day,
+    "FC": item.montantFC,
+    "USD": item.montantUSD,
+  }))
+
+  function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; name: string; color: string }>; label?: string }) {
+    if (active && payload && payload.length) {
+      return (
+        <div className="rounded-lg border bg-card p-3 shadow-lg">
+          <p className="text-sm font-medium text-foreground mb-1">{label}</p>
+          {payload.map((entry, index) => (
+            <p key={index} className="text-xs text-muted-foreground">
+              <span
+                className="inline-block w-2 h-2 rounded-full mr-1.5"
+                style={{ backgroundColor: entry.color }}
+              />
+              {entry.name}: {entry.value.toLocaleString("fr-FR")} {entry.name === "USD" ? "$" : "FC"}
+            </p>
+          ))}
+        </div>
+      )
+    }
+    return null
   }
-  return null
-}
 
-function formatFC(value: number) {
-  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
-  if (value >= 1000) return `${(value / 1000).toFixed(0)}K`
-  return value.toString()
-}
+  function formatValue(value: number) {
+    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
+    if (value >= 1000) return `${(value / 1000).toFixed(0)}K`
+    return value.toString()
+  }
 
-export function DashboardCharts() {
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="lg:col-span-2">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold">Evolution de l&apos;epargne</CardTitle>
-          <CardDescription>Depots, retraits et solde sur 6 mois</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <div className="flex flex-col gap-1">
+            <CardTitle className="text-base font-semibold">Evolution de l&apos;epargne</CardTitle>
+            <CardDescription>Dépôts et retraits par mois ({new Date().getFullYear()})</CardDescription>
+          </div>
+          <Tabs value={currency} onValueChange={(v) => setCurrency(v as "FC" | "USD")} className="w-[120px]">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="FC">FC</TabsTrigger>
+              <TabsTrigger value="USD">USD</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="evolution" className="w-full">
@@ -87,7 +99,7 @@ export function DashboardCharts() {
             <TabsContent value="evolution">
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyData}>
+                  <AreaChart data={displayData}>
                     <defs>
                       <linearGradient id="colorDepots" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
@@ -97,16 +109,20 @@ export function DashboardCharts() {
                         <stop offset="5%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3} />
                         <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0} />
                       </linearGradient>
+                      <linearGradient id="colorSolde" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--chart-3))" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="hsl(var(--chart-3))" stopOpacity={0} />
+                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                     <XAxis dataKey="month" tick={{ fontSize: 12 }} className="text-muted-foreground" />
-                    <YAxis tickFormatter={formatFC} tick={{ fontSize: 12 }} className="text-muted-foreground" />
+                    <YAxis tickFormatter={formatValue} tick={{ fontSize: 12 }} className="text-muted-foreground" />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend />
                     <Area
                       type="monotone"
-                      dataKey="depots"
-                      name="Depots"
+                      dataKey="Dépôts"
+                      name="Dépôts"
                       stroke="hsl(var(--chart-1))"
                       fillOpacity={1}
                       fill="url(#colorDepots)"
@@ -114,7 +130,7 @@ export function DashboardCharts() {
                     />
                     <Area
                       type="monotone"
-                      dataKey="retraits"
+                      dataKey="Retraits"
                       name="Retraits"
                       stroke="hsl(var(--chart-2))"
                       fillOpacity={1}
@@ -128,16 +144,23 @@ export function DashboardCharts() {
             <TabsContent value="collections">
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={weeklyCollections}>
+                  <BarChart data={weeklyDisplay}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                     <XAxis dataKey="day" tick={{ fontSize: 12 }} />
-                    <YAxis tickFormatter={formatFC} tick={{ fontSize: 12 }} />
+                    <YAxis tickFormatter={formatValue} tick={{ fontSize: 12 }} />
                     <Tooltip content={<CustomTooltip />} />
+                    <Legend />
                     <Bar
-                      dataKey="montant"
-                      name="Collectes"
+                      dataKey="FC"
+                      name="FC"
                       fill="hsl(var(--chart-1))"
-                      radius={[6, 6, 0, 0]}
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="USD"
+                      name="USD"
+                      fill="hsl(var(--chart-3))"
+                      radius={[4, 4, 0, 0]}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -157,7 +180,7 @@ export function DashboardCharts() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={distributionData}
+                  data={geographicDistribution}
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
@@ -165,7 +188,7 @@ export function DashboardCharts() {
                   paddingAngle={4}
                   dataKey="value"
                 >
-                  {distributionData.map((entry, index) => (
+                  {geographicDistribution.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -182,7 +205,7 @@ export function DashboardCharts() {
             </ResponsiveContainer>
           </div>
           <div className="flex flex-col gap-2 mt-2">
-            {distributionData.map((item) => (
+            {geographicDistribution.map((item) => (
               <div key={item.name} className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <span

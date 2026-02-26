@@ -1,5 +1,3 @@
-"use client"
-
 import { AppHeader } from "@/components/app-header"
 import { KpiCard } from "@/components/kpi-card"
 import { DashboardCharts } from "@/components/dashboard-charts"
@@ -13,8 +11,26 @@ import {
   TrendingUp,
   Banknote,
 } from "lucide-react"
+import {
+  getDashboardStatsAction,
+  getDashboardChartsDataAction,
+  getRecentActivityAction,
+  getCollectorPerformanceAction
+} from "@/actions/dashboard"
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const [statsRes, chartsRes, activityRes, perfRes] = await Promise.all([
+    getDashboardStatsAction(),
+    getDashboardChartsDataAction(),
+    getRecentActivityAction(),
+    getCollectorPerformanceAction(),
+  ])
+
+  const stats = statsRes.success ? statsRes.data : null
+  const charts = chartsRes.success ? chartsRes.data : null
+  const activities = activityRes.success && activityRes.data ? activityRes.data : []
+  const performance = perfRes.success && perfRes.data ? perfRes.data : []
+
   return (
     <>
       <AppHeader breadcrumbs={[{ label: "Tableau de bord" }]} />
@@ -30,48 +46,48 @@ export default function DashboardPage() {
 
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <KpiCard
-            title="Epargne totale (CDF)"
-            value="24,850,000 FC"
-            change="+12.5%"
+            title="Epargne totale (FC)"
+            value={stats ? `${stats.totalSavingsFC.toLocaleString("fr-FR")} FC` : "--- FC"}
+            change={stats?.changes.savingsFC}
             changeType="positive"
             icon={Wallet}
             description="vs mois dernier"
           />
           <KpiCard
             title="Epargne totale (USD)"
-            value="$18,420"
-            change="+8.3%"
+            value={stats ? `$${stats.totalSavingsUSD.toLocaleString("en-US")}` : "$ ---"}
+            change={stats?.changes.savingsUSD}
             changeType="positive"
             icon={Banknote}
             description="vs mois dernier"
           />
           <KpiCard
             title="Clients actifs"
-            value="1,247"
-            change="+24"
+            value={stats ? stats.activeClients.toLocaleString("fr-FR") : "---"}
+            change={stats?.changes.clients}
             changeType="positive"
             icon={Users}
             description="ce mois"
           />
           <KpiCard
             title="Carnets actifs"
-            value="1,892"
-            change="+31"
+            value={stats ? stats.activeCarnets.toLocaleString("fr-FR") : "---"}
+            change={stats?.changes.carnets}
             changeType="positive"
             icon={BookOpen}
             description="ce mois"
           />
           <KpiCard
             title="Retraits (mois)"
-            value="3,250,000 FC"
-            change="-5.2%"
+            value={stats ? `${stats.monthlyWithdrawalsFC.toLocaleString("fr-FR")} FC` : "--- FC"}
+            change={stats?.changes.withdrawals}
             changeType="negative"
             icon={ArrowUpFromLine}
             description="vs mois dernier"
           />
           <KpiCard
             title="Taux de croissance"
-            value="18.7%"
+            value={stats ? `${stats.growthRate}%` : "---%"}
             change="+2.1pts"
             changeType="positive"
             icon={TrendingUp}
@@ -79,11 +95,11 @@ export default function DashboardPage() {
           />
         </div>
 
-        <DashboardCharts />
+        {charts && <DashboardCharts data={charts} />}
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <RecentActivity />
-          <CollectorPerformance />
+          <RecentActivity activities={activities} />
+          <CollectorPerformance collectors={performance} />
         </div>
       </div>
     </>
