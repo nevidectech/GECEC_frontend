@@ -61,9 +61,8 @@ type CarnetView = {
 }
 
 const currencyMap: Record<number, string> = {
-  0: "CDF",
-  1: "USD",
-  2: "EUR",
+  1: "CDF",
+  2: "USD",
 }
 
 function formatMoney(value: number, currencyLabel: string) {
@@ -223,18 +222,18 @@ export default function CarnetsPage() {
             <div className="rounded-lg border overflow-hidden">
               <Table>
                 <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead className="font-semibold">Numero</TableHead>
-                        <TableHead className="font-semibold">Code client</TableHead>
-                        <TableHead className="font-semibold">Mois</TableHead>
-                        <TableHead className="font-semibold">Montant initial</TableHead>
-                        <TableHead className="font-semibold">Prix</TableHead>
-                        <TableHead className="font-semibold">Devise</TableHead>
-                        <TableHead className="font-semibold">Cree le</TableHead>
-                        <TableHead className="font-semibold">Statut</TableHead>
-                        <TableHead className="font-semibold text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="font-semibold">Numero</TableHead>
+                    <TableHead className="font-semibold">Code client</TableHead>
+                    <TableHead className="font-semibold">Mois</TableHead>
+                    <TableHead className="font-semibold">Montant initial</TableHead>
+                    <TableHead className="font-semibold">Prix</TableHead>
+                    <TableHead className="font-semibold">Devise</TableHead>
+                    <TableHead className="font-semibold">Cree le</TableHead>
+                    <TableHead className="font-semibold">Statut</TableHead>
+                    <TableHead className="font-semibold text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {loading && (
                     <TableRow>
@@ -255,60 +254,60 @@ export default function CarnetsPage() {
                   {!loading &&
                     !fetchError &&
                     filtered.map((carnet) => (
-                    <TableRow key={carnet.id} className="group">
-                      <TableCell>
-                        <Link
-                          href={`/carnets/${carnet.id}`}
-                          className="font-mono text-sm font-medium text-primary hover:underline"
-                        >
-                          {carnet.number}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="font-medium text-foreground">{carnet.clientCode}</TableCell>
-                      <TableCell className="text-muted-foreground">{carnet.month}</TableCell>
-                      <TableCell className="font-semibold tabular-nums text-foreground">
-                        {formatMoney(carnet.initialAmount, carnet.currencyLabel)}
-                      </TableCell>
-                      <TableCell className="font-semibold tabular-nums text-foreground">
-                        {formatMoney(carnet.price, carnet.currencyLabel)}
-                      </TableCell>
-                      <TableCell>{carnet.currencyLabel}</TableCell>
-                      <TableCell className="text-muted-foreground">{carnet.createdAt}</TableCell>
-                      <TableCell>
-                        <StatusBadge
-                          status={statusMap[carnet.status].status}
-                          label={statusMap[carnet.status].label}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Actions</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                              <Link href={`/carnets/${carnet.id}`}>
-                                <Eye className="h-4 w-4 mr-2" />
-                                Voir details
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Copy className="h-4 w-4 mr-2" />
-                              Duplicata
-                            </DropdownMenuItem>
-                            {carnet.status === "active" && (
-                              <DropdownMenuItem>
-                                <ArrowUpFromLine className="h-4 w-4 mr-2" />
-                                Retrait
+                      <TableRow key={carnet.id} className="group">
+                        <TableCell>
+                          <Link
+                            href={`/carnets/${carnet.id}`}
+                            className="font-mono text-sm font-medium text-primary hover:underline"
+                          >
+                            {carnet.number}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="font-medium text-foreground">{carnet.clientCode}</TableCell>
+                        <TableCell className="text-muted-foreground">{carnet.month}</TableCell>
+                        <TableCell className="font-semibold tabular-nums text-foreground">
+                          {formatMoney(carnet.initialAmount, carnet.currencyLabel)}
+                        </TableCell>
+                        <TableCell className="font-semibold tabular-nums text-foreground">
+                          {formatMoney(carnet.price, carnet.currencyLabel)}
+                        </TableCell>
+                        <TableCell>{carnet.currencyLabel}</TableCell>
+                        <TableCell className="text-muted-foreground">{carnet.createdAt}</TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            status={statusMap[carnet.status].status}
+                            label={statusMap[carnet.status].label}
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">Actions</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem asChild>
+                                <Link href={`/carnets/${carnet.id}`}>
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  Voir details
+                                </Link>
                               </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
+                              <DropdownMenuItem>
+                                <Copy className="h-4 w-4 mr-2" />
+                                Duplicata
+                              </DropdownMenuItem>
+                              {carnet.status === "active" && (
+                                <DropdownMenuItem>
+                                  <ArrowUpFromLine className="h-4 w-4 mr-2" />
+                                  Retrait
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
                     ))}
 
                   {!loading && !fetchError && filtered.length === 0 && (

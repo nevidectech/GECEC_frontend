@@ -44,9 +44,8 @@ import {
 } from "lucide-react"
 
 const currencyMap: Record<number, string> = {
-  0: "CDF",
-  1: "USD",
-  2: "EUR",
+  1: "CDF",
+  2: "USD",
 }
 
 function formatMoney(value: number, currency: number) {
