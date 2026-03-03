@@ -297,7 +297,7 @@ export async function getRecentActivityAction(): Promise<ActionResult<Activity[]
             title: `Dépôt - Carnet #${c.carnet?.number || "N/A"}`,
             subtitle: `Client ${c.carnet?.client_code || "Inconnu"}`,
             time: new Date(c.created_at).toLocaleString("fr-FR"),
-            amount: `${c.amount.toLocaleString("fr-FR")} ${c.currency === 1 ? "FC" : "USD"}`
+            amount: `${c.amount.toLocaleString("fr-FR")} ${c.currency === 1 ? "CDF" : "USD"}`
         }))
 
         return { success: true, data: activities }

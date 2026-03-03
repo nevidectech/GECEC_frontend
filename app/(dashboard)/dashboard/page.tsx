@@ -46,8 +46,8 @@ export default async function DashboardPage() {
 
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <KpiCard
-            title="Epargne totale (FC)"
-            value={stats ? `${stats.totalSavingsFC.toLocaleString("fr-FR")} FC` : "--- FC"}
+            title="Epargne totale (CDF)"
+            value={stats ? `${stats.totalSavingsFC.toLocaleString("fr-FR")} CDF` : "--- CDF"}
             change={stats?.changes.savingsFC}
             changeType="positive"
             icon={Wallet}
@@ -79,7 +79,7 @@ export default async function DashboardPage() {
           />
           <KpiCard
             title="Retraits (mois)"
-            value={stats ? `${stats.monthlyWithdrawalsFC.toLocaleString("fr-FR")} FC` : "--- FC"}
+            value={stats ? `${stats.monthlyWithdrawalsFC.toLocaleString("fr-FR")} CDF` : "--- CDF"}
             change={stats?.changes.withdrawals}
             changeType="negative"
             icon={ArrowUpFromLine}
