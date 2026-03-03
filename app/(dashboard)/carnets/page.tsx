@@ -255,6 +255,87 @@ export default function CarnetsPage() {
     void fetchTotals()
   }, [supabase, statusFilter, monthFilter, search])
 
+  const handleExport = async () => {
+    let query = supabase.from("carnet").select("*")
+
+    if (statusFilter !== "all") {
+      query = query.eq("is_archived", statusFilter === "closed")
+    }
+
+    const dbMonth = getDbMonth(monthFilter)
+    if (dbMonth) {
+      query = query.ilike("month", `%${dbMonth}%`)
+    }
+
+    if (search) {
+      query = query.or(`number.ilike.%${search}%,client_code.ilike.%${search}%`)
+    }
+
+    const { data: carnetsData, error: carnetError } = await query.order("created_at", { ascending: false })
+
+    if (carnetError || !carnetsData || carnetsData.length === 0) return
+
+    const carnetIds = carnetsData.map(c => c.id)
+    const { data: cotisationsData, error: cotError } = await supabase
+      .from("cotisation")
+      .select("carnet_id, amount, currency")
+      .in("carnet_id", carnetIds)
+
+    if (cotError) return
+
+    const headers = [
+      "Numero",
+      "Code Client",
+      "Mois",
+      "Statut",
+      "Cree le",
+      "Total Initial CDF",
+      "Total Collecté CDF",
+      "Épargne Totale CDF",
+      "Total Initial USD",
+      "Total Collecté USD",
+      "Épargne Totale USD"
+    ]
+
+    const rows = carnetsData.map(c => {
+      const relatedCotisations = (cotisationsData ?? []).filter(cot => cot.carnet_id === c.id)
+
+      const initialCDF = c.currency === 1 ? Number(c.initial_amount) : 0
+      const initialUSD = c.currency === 2 ? Number(c.initial_amount) : 0
+
+      const epargneCDF = relatedCotisations.filter(cot => cot.currency === 1).reduce((sum, cot) => sum + Number(cot.amount), 0)
+      const epargneUSD = relatedCotisations.filter(cot => cot.currency === 2).reduce((sum, cot) => sum + Number(cot.amount), 0)
+
+      const collecteCDF = initialCDF + epargneCDF
+      const collecteUSD = initialUSD + epargneUSD
+
+      return [
+        c.number,
+        c.client_code,
+        c.month,
+        c.is_archived ? "Cloture" : "Actif",
+        c.created_at ? new Date(c.created_at).toLocaleDateString() : "",
+        initialCDF,
+        collecteCDF,
+        epargneCDF,
+        initialUSD,
+        collecteUSD,
+        epargneUSD
+      ]
+    })
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.setAttribute("href", url)
+    link.setAttribute("download", `carnets_detail_${monthFilter}_${statusFilter}.csv`)
+    link.style.visibility = "hidden"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   return (
     <>
       <AppHeader breadcrumbs={[{ label: "Carnets" }]} />
@@ -443,7 +524,7 @@ export default function CarnetsPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button variant="outline" size="sm" className="h-9 gap-1.5">
+                <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleExport}>
                   <Download className="h-3.5 w-3.5" />
                   Export
                 </Button>
