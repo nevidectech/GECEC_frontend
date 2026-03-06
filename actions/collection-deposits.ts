@@ -21,6 +21,93 @@ const createCollectionDepositSchema = z.object({
   amountCotisationUsd: z.number().min(0),
 })
 
+function parsePercent(raw: string | null | undefined): number | null {
+  if (!raw) return null
+  const cleaned = raw.replace("%", "").replace(",", ".").trim()
+  const value = Number.parseFloat(cleaned)
+  if (!Number.isFinite(value)) return null
+  return value
+}
+
+function firstDay(year: number, month: number) {
+  return new Date(Date.UTC(year, month, 1, 0, 0, 0, 0))
+}
+
+function lastDay(year: number, month: number) {
+  return new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999))
+}
+
+async function computeCollectorRemunerationForPeriod(
+  adminClient: ReturnType<typeof createAdminClient>,
+  collectorId: string,
+  date: string,
+) {
+  const focusDate = new Date(`${date}T00:00:00Z`)
+  const year = focusDate.getUTCFullYear()
+  const month = focusDate.getUTCMonth()
+  const startPreviousMonth = firstDay(year, month - 1)
+  const endCurrentMonth = lastDay(year, month)
+
+  const [{ data: variables }, { data: carnets }] = await Promise.all([
+    adminClient
+      .from("global_variable")
+      .select("group, key, value")
+      .or("group.ilike.%remuner%,key.ilike.%remuner%,key.ilike.%collect%"),
+    adminClient
+      .from("carnet")
+      .select("initial_amount, currency")
+      .eq("created_by", collectorId)
+      .gte("created_at", startPreviousMonth.toISOString())
+      .lte("created_at", endCurrentMonth.toISOString())
+      .eq("is_archived", false),
+  ])
+
+  const candidateKeys = [
+    "collecteur_remuneration_rate",
+    "collector_remuneration_rate",
+    "remuneration_collecteur_percent",
+    "remuneration_collecteur_rate",
+    "taux_remuneration_collecteur",
+    "remuneration_rate",
+  ]
+
+  let ratePercent: number | null = null
+  for (const key of candidateKeys) {
+    const row = (variables ?? []).find((item: any) => String(item.key || "").toLowerCase() === key)
+    const parsed = parsePercent(row?.value)
+    if (parsed !== null) {
+      ratePercent = parsed
+      break
+    }
+  }
+
+  if (ratePercent === null) {
+    const firstNumeric = (variables ?? [])
+      .map((item: any) => parsePercent(item.value))
+      .find((value) => value !== null)
+    ratePercent = firstNumeric ?? 40
+  }
+
+  const totalInitialAmountFc = (carnets ?? [])
+    .filter((item: any) => (item.currency || 1) === 1)
+    .reduce((sum: number, item: any) => sum + Number(item.initial_amount || 0), 0)
+
+  const totalInitialAmountUsd = (carnets ?? [])
+    .filter((item: any) => (item.currency || 1) === 2)
+    .reduce((sum: number, item: any) => sum + Number(item.initial_amount || 0), 0)
+
+  const remunerationAmountFc = Math.round((totalInitialAmountFc * ratePercent) / 100)
+  const remunerationAmountUsd = Number(((totalInitialAmountUsd * ratePercent) / 100).toFixed(2))
+
+  return {
+    ratePercent,
+    totalInitialAmountFc: Math.round(totalInitialAmountFc),
+    totalInitialAmountUsd: Number(totalInitialAmountUsd.toFixed(2)),
+    remunerationAmountFc,
+    remunerationAmountUsd,
+  }
+}
+
 async function getCurrentUserId() {
   const supabase = await createServerClient()
   const {
@@ -177,21 +264,52 @@ export async function createCollectionDepositAction(
     const payload = createCollectionDepositSchema.parse(input)
     const adminClient = createAdminClient()
 
-    const { data, error } = await adminClient
+    const remuneration = await computeCollectorRemunerationForPeriod(
+      adminClient,
+      payload.collectorId,
+      payload.date,
+    )
+
+    const insertPayload = {
+      collector_id: payload.collectorId,
+      deposit_date: new Date(payload.date).toISOString(),
+      amount_cotisation: payload.amountCotisation,
+      amount_carnet: payload.amountCarnet,
+      amount_duplicate: payload.amountDuplicate,
+      amount_fiche_retrait: payload.amountFicheRetrait,
+      amount_cotisation_usd: payload.amountCotisationUsd,
+      remuneration_rate: remuneration.ratePercent,
+      remuneration_amount: remuneration.remunerationAmountFc,
+      remuneration_base_amount: remuneration.totalInitialAmountFc,
+      remuneration_amount_usd: remuneration.remunerationAmountUsd,
+      remuneration_base_amount_usd: remuneration.totalInitialAmountUsd,
+      created_by: currentUserId,
+      status: "pending", // Waiting for teller validation
+    }
+
+    let { data, error } = await adminClient
       .from("collection_deposit" as any)
-      .insert({
-        collector_id: payload.collectorId,
-        deposit_date: new Date(payload.date).toISOString(),
-        amount_cotisation: payload.amountCotisation,
-        amount_carnet: payload.amountCarnet,
-        amount_duplicate: payload.amountDuplicate,
-        amount_fiche_retrait: payload.amountFicheRetrait,
-        amount_cotisation_usd: payload.amountCotisationUsd,
-        created_by: currentUserId,
-        status: "pending", // Waiting for teller validation
-      })
+      .insert(insertPayload as any)
       .select("id")
       .single()
+
+    if (error && /column .* does not exist/i.test(error.message)) {
+      ;({ data, error } = await adminClient
+        .from("collection_deposit" as any)
+        .insert({
+          collector_id: payload.collectorId,
+          deposit_date: new Date(payload.date).toISOString(),
+          amount_cotisation: payload.amountCotisation,
+          amount_carnet: payload.amountCarnet,
+          amount_duplicate: payload.amountDuplicate,
+          amount_fiche_retrait: payload.amountFicheRetrait,
+          amount_cotisation_usd: payload.amountCotisationUsd,
+          created_by: currentUserId,
+          status: "pending",
+        })
+        .select("id")
+        .single())
+    }
 
     if (error) {
       return { success: false, error: error.message }
