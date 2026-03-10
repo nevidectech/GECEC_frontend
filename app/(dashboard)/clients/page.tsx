@@ -64,7 +64,7 @@ type ClientView = {
 function formatMoney(value: number, currency: number) {
   const label = currencyMap[currency] ?? `CUR-${currency}`
   const locale = label === "USD" || label === "EUR" ? "en-US" : "fr-FR"
-  return `${new Intl.NumberFormat(locale).format(value)} ${label}`
+  return `${new Intl.NumberFormat(locale).format(value)} ${currency === 1 ? "CDF" : "USD"}`
 }
 
 export default function ClientsPage() {
