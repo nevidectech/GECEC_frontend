@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import React from "react"
 import Link from "next/link"
 import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
@@ -25,6 +26,13 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { StatusBadge } from "@/components/status-badge"
 import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination"
+import {
   Search,
   Plus,
   MoreHorizontal,
@@ -33,6 +41,8 @@ import {
   Users,
   UserCheck,
   UserX,
+  ChevronLeft,
+  ChevronRight,
   Download,
 } from "lucide-react"
 
@@ -43,9 +53,8 @@ const statusMap: Record<string, { status: "success" | "warning" | "error"; label
 }
 
 const currencyMap: Record<number, string> = {
-  0: "CDF",
-  1: "USD",
-  2: "EUR",
+  1: "CDF",
+  2: "USD",
 }
 
 type ClientView = {
@@ -64,7 +73,7 @@ type ClientView = {
 function formatMoney(value: number, currency: number) {
   const label = currencyMap[currency] ?? `CUR-${currency}`
   const locale = label === "USD" || label === "EUR" ? "en-US" : "fr-FR"
-  return `${new Intl.NumberFormat(locale).format(value)} ${label}`
+  return `${new Intl.NumberFormat(locale).format(value)} ${currency === 1 ? "CDF" : "USD"}`
 }
 
 export default function ClientsPage() {
@@ -73,39 +82,82 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
+  const [page, setPage] = useState(1)
+  const [pageSize] = useState(10)
+  const [totalCount, setTotalCount] = useState(0)
+  const [stats, setStats] = useState({ active: 0, inactive: 0, total: 0 })
+
+  useEffect(() => {
+    async function fetchGlobalStats() {
+      const statsPromises = [
+        supabase
+          .from("client")
+          .select("id", { count: "exact", head: true })
+          .is("deleted_at", null),
+        supabase
+          .from("client")
+          .select("id", { count: "exact", head: true })
+          .is("deleted_at", null)
+          .eq("status", 1),
+        supabase
+          .from("client")
+          .select("id", { count: "exact", head: true })
+          .is("deleted_at", null)
+          .eq("status", 0),
+      ]
+      const [totalRes, activeRes, inactiveRes] = await Promise.all(statsPromises)
+      setStats({ total: totalRes.count ?? 0, active: activeRes.count ?? 0, inactive: inactiveRes.count ?? 0 })
+    }
+    fetchGlobalStats()
+  }, [supabase])
 
   useEffect(() => {
     async function fetchClients() {
       setLoading(true)
       setFetchError(null)
 
-      const [clientsRes, zonesRes, carnetsRes] = await Promise.all([
-        supabase.from("client").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
-        supabase.from("zone").select("id, name"),
-        supabase.from("carnet").select("id, client_code, initial_amount, currency"),
-      ])
+      const searchFilter = search
+        ? `first_name.ilike.%${search}%,last_name.ilike.%${search}%,code.ilike.%${search}%,phone.ilike.%${search}%`
+        : null
 
-      if (clientsRes.error) {
-        setFetchError(clientsRes.error.message)
+      // Fetch zones
+      const { data: zonesData, error: zonesError } = await supabase.from("zone").select("id, name")
+      if (zonesError) setFetchError(zonesError.message) // non-fatal
+      const zoneMap = new Map((zonesData ?? []).map((zone) => [zone.id, zone.name]))
+
+      // Fetch page of clients
+      let clientQuery = supabase.from("client").select("*", { count: "exact" }).is("deleted_at", null)
+
+      if (searchFilter) {
+        clientQuery = clientQuery.or(searchFilter)
+      }
+
+      const from = (page - 1) * pageSize
+      const to = from + pageSize - 1
+      const { data: clientsData, error: clientsError, count } = await clientQuery
+        .order("created_at", { ascending: false })
+        .range(from, to)
+
+      if (clientsError) {
+        setFetchError(clientsError.message)
         setClients([])
+        setTotalCount(0)
         setLoading(false)
         return
       }
 
-      if (zonesRes.error) {
-        setFetchError(zonesRes.error.message)
-      }
-      if (carnetsRes.error) {
-        setFetchError(carnetsRes.error.message)
-      }
+      // Fetch related data for the page
+      const clientCodes = (clientsData ?? []).map((c) => c.code)
+      const { data: carnetsData, error: carnetsError } = await supabase
+        .from("carnet")
+        .select("client_code, initial_amount, currency")
+        .in("client_code", clientCodes)
+      if (carnetsError) setFetchError(carnetsError.message) // non-fatal
+      const carnets = (carnetsData ?? []) as Pick<Carnet, "client_code", "initial_amount", "currency">[]
 
-      const zones = (zonesRes.data ?? []) as Pick<Zone, "id" | "name">[]
-      const zoneMap = new Map(zones.map((zone) => [zone.id, zone.name]))
-      const carnets = (carnetsRes.data ?? []) as Pick<Carnet, "id" | "client_code" | "initial_amount" | "currency">[]
-
-      const mapped = ((clientsRes.data ?? []) as Client[]).map((client) => {
+      const mapped = ((clientsData ?? []) as Client[]).map((client) => {
         const name = `${client.first_name} ${client.last_name}`.trim()
-        const initials = `${client.first_name[0] ?? ""}${client.last_name[0] ?? ""}`.toUpperCase()
+        const initials = `${client.first_name?.[0] ?? ""}${client.last_name?.[0] ?? ""}`.toUpperCase()
         const clientCarnets = carnets.filter((carnet) => carnet.client_code === client.code)
         const totalByCurrency = new Map<number, number>()
         clientCarnets.forEach((carnet) => {
@@ -113,41 +165,25 @@ export default function ClientsPage() {
           totalByCurrency.set(carnet.currency, current + Number(carnet.initial_amount ?? 0))
         })
 
-        const primaryCurrency = totalByCurrency.keys().next().value ?? 0
+        const primaryCurrency = totalByCurrency.keys().next().value ?? 1
         const primaryTotal = totalByCurrency.get(primaryCurrency) ?? 0
         const status = client.status === 1 ? "active" : client.status === 0 ? "inactive" : "suspended"
         const since = client.created_at ? new Date(client.created_at).getFullYear().toString() : "-"
 
-        return {
-          id: client.id,
-          code: client.code,
-          name,
-          initials,
-          phone: client.phone,
-          zone: zoneMap.get(client.zone_id) ?? "-",
-          carnets: clientCarnets.length,
-          totalEpargne: formatMoney(primaryTotal, primaryCurrency),
-          status,
-          since,
-        } satisfies ClientView
+        return { id: client.id, code: client.code, name, initials, phone: client.phone, zone: zoneMap.get(client.zone_id) ?? "-", carnets: clientCarnets.length, totalEpargne: formatMoney(primaryTotal, primaryCurrency), status, since } satisfies ClientView
       })
 
       setClients(mapped)
+      setTotalCount(count ?? 0)
       setLoading(false)
     }
 
     void fetchClients()
-  }, [supabase])
+  }, [supabase, search, page, pageSize])
 
-  const filtered = clients.filter(
-    (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.code.toLowerCase().includes(search.toLowerCase()) ||
-      c.phone.includes(search)
-  )
-
-  const activeCount = clients.filter((client) => client.status === "active").length
-  const inactiveCount = clients.filter((client) => client.status === "inactive").length
+  useEffect(() => {
+    setPage(1)
+  }, [search])
 
   return (
     <>
@@ -174,7 +210,7 @@ export default function ClientsPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total clients</p>
-                <p className="text-xl font-bold text-foreground">{clients.length}</p>
+                <p className="text-xl font-bold text-foreground">{stats.total}</p>
               </div>
             </CardContent>
           </Card>
@@ -185,7 +221,7 @@ export default function ClientsPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Actifs</p>
-                <p className="text-xl font-bold text-foreground">{activeCount}</p>
+                <p className="text-xl font-bold text-foreground">{stats.active}</p>
               </div>
             </CardContent>
           </Card>
@@ -196,7 +232,7 @@ export default function ClientsPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Inactifs</p>
-                <p className="text-xl font-bold text-foreground">{inactiveCount}</p>
+                <p className="text-xl font-bold text-foreground">{stats.inactive}</p>
               </div>
             </CardContent>
           </Card>
@@ -257,7 +293,7 @@ export default function ClientsPage() {
 
                   {!loading &&
                     !fetchError &&
-                    filtered.map((client) => (
+                    clients.map((client) => (
                     <TableRow key={client.id} className="group">
                       <TableCell>
                         <div className="flex items-center gap-3">
@@ -315,7 +351,7 @@ export default function ClientsPage() {
                     </TableRow>
                     ))}
 
-                  {!loading && !fetchError && filtered.length === 0 && (
+                  {!loading && !fetchError && clients.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                         Aucun client trouve.
@@ -325,6 +361,61 @@ export default function ClientsPage() {
                 </TableBody>
               </Table>
             </div>
+            {totalCount > pageSize && (
+              <div className="mt-4 flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Affichage de {(page - 1) * pageSize + 1} à {Math.min(page * pageSize, totalCount)} sur {totalCount} clients
+                </p>
+                <Pagination className="mx-0 w-auto">
+                  <PaginationContent>
+                    <PaginationItem>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={page === 1}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        className="gap-1 pl-2.5"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Précédent
+                      </Button>
+                    </PaginationItem>
+                    <div className="flex items-center gap-1 mx-2">
+                      {Array.from({ length: Math.ceil(totalCount / pageSize) }, (_, i) => i + 1)
+                        .filter(p => p === 1 || p === Math.ceil(totalCount / pageSize) || Math.abs(p - page) <= 1)
+                        .map((p, i, arr) => (
+                          <React.Fragment key={p}>
+                            {i > 0 && arr[i - 1] !== p - 1 && <span className="text-muted-foreground">...</span>}
+                            <PaginationItem>
+                              <Button
+                                variant={page === p ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setPage(p)}
+                                className="h-8 w-8 p-0"
+                              >
+                                {p}
+                              </Button>
+                            </PaginationItem>
+                          </React.Fragment>
+                        ))
+                      }
+                    </div>
+                    <PaginationItem>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={page >= Math.ceil(totalCount / pageSize)}
+                        onClick={() => setPage((p) => p + 1)}
+                        className="gap-1 pr-2.5"
+                      >
+                        Suivant
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
