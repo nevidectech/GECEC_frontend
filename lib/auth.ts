@@ -26,36 +26,6 @@ export async function login(formData: FormData) {
     return { success: true };
 }
 
-export async function register(formData: FormData) {
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-    const firstName = formData.get("first_name") as string;
-    const lastName = formData.get("last_name") as string;
-
-    if (!email || !password) {
-        return { success: false, error: "Email et mot de passe requis." };
-    }
-
-    const supabase = await createClient();
-
-    const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-            data: {
-                first_name: firstName,
-                last_name: lastName,
-            },
-        },
-    });
-
-    if (error) {
-        return { success: false, error: error.message };
-    }
-
-    return { success: true };
-}
-
 export async function logout() {
     const supabase = await createClient();
     await supabase.auth.signOut();

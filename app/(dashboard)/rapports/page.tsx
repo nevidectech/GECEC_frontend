@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AppHeader } from "@/components/app-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -34,42 +34,75 @@ import {
 } from "recharts"
 import {
   BarChart3,
+  Calendar,
   Download,
   FileSpreadsheet,
   FileText,
-  Calendar,
+  Loader2,
+  TrendingDown,
   TrendingUp,
   Users,
   Wallet,
-  Loader2,
 } from "lucide-react"
-import { getReportsDataAction, type ReportStats } from "@/actions/reports"
+import { getReportsDataAction, type ReportPeriod, type ReportStats } from "@/actions/reports"
 
 const predefinedReports = [
-  { name: "Rapport mensuel d'activite", description: "Resume complet des operations du mois", icon: Calendar, format: "PDF / Excel" },
-  { name: "Etat des soldes par zone", description: "Repartition des soldes d'epargne par zone geographique", icon: BarChart3, format: "PDF / Excel" },
-  { name: "Performance des collecteurs", description: "Analyse de la performance individuelle des collecteurs", icon: Users, format: "PDF / Excel" },
-  { name: "Remunerations versees", description: "Detail des remunerations calculees et versees", icon: Wallet, format: "PDF / Excel" },
-  { name: "Rapport de croissance", description: "Evolution de l'epargne et projections", icon: TrendingUp, format: "PDF" },
+  {
+    name: "Rapport mensuel d'activite",
+    description: "Synthese de la collecte et des retraits sur la periode selectionnee.",
+    icon: Calendar,
+    format: "PDF / Excel",
+  },
+  {
+    name: "Etat des soldes par zone",
+    description: "Vue comparee des clients, carnets actifs et epargne par zone.",
+    icon: BarChart3,
+    format: "PDF / Excel",
+  },
+  {
+    name: "Performance des collecteurs",
+    description: "Base de pilotage des collecteurs actifs par zone de collecte.",
+    icon: Users,
+    format: "PDF / Excel",
+  },
+  {
+    name: "Tendance de tresorerie",
+    description: "Lecture rapide de la croissance nette mois par mois.",
+    icon: Wallet,
+    format: "PDF",
+  },
 ]
 
-function formatK(value: number) {
-  return `${value.toLocaleString("fr-FR")}K`
-}
+const periods: Array<{ value: ReportPeriod; label: string }> = [
+  { value: "3m", label: "3 derniers mois" },
+  { value: "6m", label: "6 derniers mois" },
+  { value: "12m", label: "12 derniers mois" },
+]
 
 function formatCurrency(value: number) {
   return `${value.toLocaleString("fr-FR")} FC`
 }
 
+function formatCompactCurrency(value: number) {
+  return new Intl.NumberFormat("fr-FR", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value)
+}
+
 export default function RapportsPage() {
+  const [period, setPeriod] = useState<ReportPeriod>("6m")
   const [reportData, setReportData] = useState<ReportStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const loadReports = async () => {
+      setLoading(true)
+      setError(null)
+
       try {
-        const result = await getReportsDataAction()
+        const result = await getReportsDataAction(period)
         if (result.success && result.data) {
           setReportData(result.data)
         } else {
@@ -83,16 +116,25 @@ export default function RapportsPage() {
       }
     }
 
-    loadReports()
-  }, [])
+    void loadReports()
+  }, [period])
 
   const monthlyReport = reportData?.monthlyReport || []
   const zoneReport = reportData?.zoneReport || []
+  const topZone = useMemo(() => {
+    if (zoneReport.length === 0) return null
+    return [...zoneReport].sort((a, b) => b.epargne - a.epargne)[0]
+  }, [zoneReport])
+
   const totalClients = reportData?.activeClients || 0
   const totalCarnets = reportData?.activeCarnets || 0
   const totalDeposits = reportData?.totalDeposits || 0
   const totalWithdrawals = reportData?.totalWithdrawals || 0
   const netBalance = reportData?.netBalance || 0
+  const averageDeposit = reportData?.averageDeposit || 0
+  const averageWithdrawal = reportData?.averageWithdrawal || 0
+  const periodLabel = reportData?.periodLabel || periods.find((item) => item.value === period)?.label || ""
+
   return (
     <>
       <AppHeader breadcrumbs={[{ label: "Rapports" }]} />
@@ -100,20 +142,21 @@ export default function RapportsPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Rapports</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Rapports predefinis et analyses personnalisees
+            <p className="mt-1 text-sm text-muted-foreground">
+              Analyses dynamiques de la collecte sur {periodLabel.toLowerCase()}
             </p>
           </div>
-          <Select defaultValue="feb-2024" disabled={loading}>
-            <SelectTrigger className="w-44 h-9">
-              <Calendar className="h-3.5 w-3.5 mr-1.5" />
+          <Select value={period} onValueChange={(value) => setPeriod(value as ReportPeriod)} disabled={loading}>
+            <SelectTrigger className="h-9 w-52">
+              <Calendar className="mr-1.5 h-3.5 w-3.5" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="feb-2024">Fevrier 2024</SelectItem>
-              <SelectItem value="jan-2024">Janvier 2024</SelectItem>
-              <SelectItem value="dec-2023">Decembre 2023</SelectItem>
-              <SelectItem value="q4-2023">Q4 2023</SelectItem>
+              {periods.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -121,9 +164,7 @@ export default function RapportsPage() {
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <span className="ml-3 text-sm text-muted-foreground">
-              Chargement des rapports...
-            </span>
+            <span className="ml-3 text-sm text-muted-foreground">Chargement des rapports...</span>
           </div>
         ) : error ? (
           <Card>
@@ -135,57 +176,52 @@ export default function RapportsPage() {
           </Card>
         ) : (
           <>
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Clients actifs
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Clients actifs</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-foreground">
-                    {totalClients.toLocaleString("fr-FR")}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">clients enregistres</p>
+                  <div className="text-2xl font-bold text-foreground">{totalClients.toLocaleString("fr-FR")}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">portefeuille client actif</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Carnets actifs
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Carnets actifs</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-foreground">
-                    {totalCarnets.toLocaleString("fr-FR")}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">carnets non clotures</p>
+                  <div className="text-2xl font-bold text-foreground">{totalCarnets.toLocaleString("fr-FR")}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">carnets non clotures</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Total depots
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total dépôts</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-emerald-600">
-                    {formatK(totalDeposits / 1000)}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">en FC</p>
+                  <div className="text-2xl font-bold text-emerald-600">{formatCompactCurrency(totalDeposits)}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">moyenne: {formatCurrency(averageDeposit)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Solde net
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total retraits</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className={`text-2xl font-bold ${netBalance > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                    {formatK(netBalance / 1000)}
+                  <div className="text-2xl font-bold text-amber-600">{formatCompactCurrency(totalWithdrawals)}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">moyenne: {formatCurrency(averageWithdrawal)}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Solde net</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-2xl font-bold ${netBalance >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    {formatCompactCurrency(netBalance)}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">depots - retraits</p>
+                  <p className="mt-1 text-xs text-muted-foreground">dépôts - retraits</p>
                 </CardContent>
               </Card>
             </div>
@@ -194,7 +230,7 @@ export default function RapportsPage() {
               <TabsList>
                 <TabsTrigger value="overview">Vue d&apos;ensemble</TabsTrigger>
                 <TabsTrigger value="zones">Par zone</TabsTrigger>
-                <TabsTrigger value="predefined">Rapports predefinis</TabsTrigger>
+                <TabsTrigger value="predefined">Rapports prédefinis</TabsTrigger>
               </TabsList>
 
               <TabsContent value="overview" className="mt-6">
@@ -202,7 +238,7 @@ export default function RapportsPage() {
                   <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base font-semibold">Flux financiers mensuels</CardTitle>
-                      <CardDescription>Depots vs Retraits (en milliers FC)</CardDescription>
+                      <CardDescription>{periodLabel} • Dépôts vs retraits (FC)</CardDescription>
                     </CardHeader>
                     <CardContent>
                       {monthlyReport.length > 0 ? (
@@ -211,9 +247,9 @@ export default function RapportsPage() {
                             <BarChart data={monthlyReport}>
                               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                               <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                              <YAxis tickFormatter={formatK} tick={{ fontSize: 12 }} />
+                              <YAxis tickFormatter={formatCompactCurrency} tick={{ fontSize: 12 }} />
                               <Tooltip
-                                formatter={(value: number) => [`${value.toLocaleString("fr-FR")}K FC`, ""]}
+                                formatter={(value: number) => [formatCurrency(value), ""]}
                                 contentStyle={{
                                   backgroundColor: "hsl(var(--card))",
                                   border: "1px solid hsl(var(--border))",
@@ -222,59 +258,94 @@ export default function RapportsPage() {
                                 }}
                               />
                               <Legend />
-                              <Bar dataKey="depots" name="Depots" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="depots" name="Dépôts" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
                               <Bar dataKey="retraits" name="Retraits" fill="hsl(var(--chart-3))" radius={[4, 4, 0, 0]} />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
                       ) : (
-                        <div className="flex items-center justify-center h-[350px]">
-                          <span className="text-sm text-muted-foreground">Pas de donnees disponibles</span>
+                        <div className="flex h-[350px] items-center justify-center">
+                          <span className="text-sm text-muted-foreground">Pas de données disponibles</span>
                         </div>
                       )}
                     </CardContent>
                   </Card>
 
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base font-semibold">Croissance nette</CardTitle>
-                      <CardDescription>Solde net mensuel (depots - retraits) en milliers FC</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {monthlyReport.length > 0 ? (
-                        <div className="h-[250px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={monthlyReport}>
-                              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                              <YAxis tickFormatter={formatK} tick={{ fontSize: 12 }} />
-                              <Tooltip
-                                formatter={(value: number) => [`${value.toLocaleString("fr-FR")}K FC`, "Croissance nette"]}
-                                contentStyle={{
-                                  backgroundColor: "hsl(var(--card))",
-                                  border: "1px solid hsl(var(--border))",
-                                  borderRadius: "8px",
-                                  color: "hsl(var(--foreground))",
-                                }}
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="soldeNet"
-                                name="Solde net"
-                                stroke="hsl(var(--chart-2))"
-                                strokeWidth={2.5}
-                                dot={{ fill: "hsl(var(--chart-2))", strokeWidth: 0, r: 4 }}
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
+                  <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-semibold">Croissance nette</CardTitle>
+                        <CardDescription>Évolution du solde net sur {periodLabel.toLowerCase()}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {monthlyReport.length > 0 ? (
+                          <div className="h-[250px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={monthlyReport}>
+                                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                                <YAxis tickFormatter={formatCompactCurrency} tick={{ fontSize: 12 }} />
+                                <Tooltip
+                                  formatter={(value: number) => [formatCurrency(value), "Solde net"]}
+                                  contentStyle={{
+                                    backgroundColor: "hsl(var(--card))",
+                                    border: "1px solid hsl(var(--border))",
+                                    borderRadius: "8px",
+                                    color: "hsl(var(--foreground))",
+                                  }}
+                                />
+                                <Line
+                                  type="monotone"
+                                  dataKey="soldeNet"
+                                  name="Solde net"
+                                  stroke="hsl(var(--chart-2))"
+                                  strokeWidth={2.5}
+                                  dot={{ fill: "hsl(var(--chart-2))", strokeWidth: 0, r: 4 }}
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        ) : (
+                          <div className="flex h-[250px] items-center justify-center">
+                            <span className="text-sm text-muted-foreground">Pas de données disponibles</span>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-semibold">Faits marquants</CardTitle>
+                        <CardDescription>Lecture rapide de la période</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="rounded-lg border bg-emerald-500/5 p-4">
+                          <div className="flex items-center gap-2 text-emerald-600">
+                            <TrendingUp className="h-4 w-4" />
+                            <span className="text-sm font-medium">Dépôts cumulés</span>
+                          </div>
+                          <p className="mt-2 text-xl font-bold text-foreground">{formatCurrency(totalDeposits)}</p>
                         </div>
-                      ) : (
-                        <div className="flex items-center justify-center h-[250px]">
-                          <span className="text-sm text-muted-foreground">Pas de donnees disponibles</span>
+                        <div className="rounded-lg border bg-amber-500/5 p-4">
+                          <div className="flex items-center gap-2 text-amber-600">
+                            <TrendingDown className="h-4 w-4" />
+                            <span className="text-sm font-medium">Retraits cumulés</span>
+                          </div>
+                          <p className="mt-2 text-xl font-bold text-foreground">{formatCurrency(totalWithdrawals)}</p>
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                        <div className="rounded-lg border bg-primary/5 p-4">
+                          <div className="flex items-center gap-2 text-primary">
+                            <Users className="h-4 w-4" />
+                            <span className="text-sm font-medium">Zone la plus active</span>
+                          </div>
+                          <p className="mt-2 text-base font-semibold text-foreground">{topZone?.zone || "Aucune zone"}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {topZone ? `${formatCurrency(topZone.epargne)} d'épargne cumulée` : "Pas assez de données"}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
               </TabsContent>
 
@@ -283,8 +354,8 @@ export default function RapportsPage() {
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
-                        <CardTitle className="text-base font-semibold">Repartition par zone geographique</CardTitle>
-                        <CardDescription>Synthese de l&apos;activite par zone de collecte</CardDescription>
+                        <CardTitle className="text-base font-semibold">Répartition par zone géographique</CardTitle>
+                        <CardDescription>Synthèse dynamique de l&apos;activité par zone</CardDescription>
                       </div>
                       <Button variant="outline" size="sm" className="gap-1.5" disabled={zoneReport.length === 0}>
                         <Download className="h-3.5 w-3.5" />
@@ -294,15 +365,15 @@ export default function RapportsPage() {
                   </CardHeader>
                   <CardContent>
                     {zoneReport.length > 0 ? (
-                      <div className="rounded-lg border overflow-hidden">
+                      <div className="overflow-hidden rounded-lg border">
                         <Table>
                           <TableHeader>
                             <TableRow className="bg-muted/50">
                               <TableHead className="font-semibold">Zone</TableHead>
-                              <TableHead className="font-semibold text-right">Clients</TableHead>
-                              <TableHead className="font-semibold text-right">Carnets</TableHead>
-                              <TableHead className="font-semibold text-right">Epargne totale</TableHead>
-                              <TableHead className="font-semibold text-right">Collecteurs</TableHead>
+                              <TableHead className="text-right font-semibold">Clients</TableHead>
+                              <TableHead className="text-right font-semibold">Carnets</TableHead>
+                              <TableHead className="text-right font-semibold">Épargne totale</TableHead>
+                              <TableHead className="text-right font-semibold">Collecteurs</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -337,7 +408,7 @@ export default function RapportsPage() {
                       </div>
                     ) : (
                       <div className="flex items-center justify-center py-8">
-                        <span className="text-sm text-muted-foreground">Pas de donnees par zone disponibles</span>
+                        <span className="text-sm text-muted-foreground">Pas de données par zone disponibles</span>
                       </div>
                     )}
                   </CardContent>
@@ -347,7 +418,7 @@ export default function RapportsPage() {
               <TabsContent value="predefined" className="mt-6">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {predefinedReports.map((report) => (
-                    <Card key={report.name} className="group hover:border-primary/30 transition-colors">
+                    <Card key={report.name} className="group transition-colors hover:border-primary/30">
                       <CardContent className="p-5">
                         <div className="flex flex-col gap-4">
                           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -355,16 +426,16 @@ export default function RapportsPage() {
                           </div>
                           <div>
                             <h3 className="text-sm font-semibold text-foreground">{report.name}</h3>
-                            <p className="text-xs text-muted-foreground mt-1">{report.description}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{report.description}</p>
                           </div>
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-muted-foreground">{report.format}</span>
                             <div className="flex gap-1">
-                              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
+                              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
                                 <FileText className="h-3 w-3" />
                                 PDF
                               </Button>
-                              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
+                              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
                                 <FileSpreadsheet className="h-3 w-3" />
                                 Excel
                               </Button>

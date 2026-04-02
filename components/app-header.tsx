@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, Search } from "lucide-react"
+import { Bell, Loader2, LogOut, Search } from "lucide-react"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useCurrentUser } from "@/hooks/useCurrentUser"
+import { useLogout } from "@/hooks/useLogout"
 
 interface AppHeaderProps {
   breadcrumbs?: { label: string; href?: string }[]
@@ -32,6 +33,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
   const { user } = useCurrentUser()
+  const { logout, isPending } = useLogout()
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-card/80 backdrop-blur-sm px-4">
       <SidebarTrigger className="-ml-1" />
@@ -119,7 +121,18 @@ export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
             <DropdownMenuItem>Profil</DropdownMenuItem>
             <DropdownMenuItem>Preferences</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">Deconnexion</DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={logout}
+              disabled={isPending}
+              className="text-destructive focus:text-destructive"
+            >
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4" />
+              )}
+              Deconnexion
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
