@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Plus, Shield, Loader2 } from "lucide-react"
+import { Plus, Shield, Loader2, Edit, KeyRound } from "lucide-react"
 import { toast } from "sonner"
 import { useUsers } from "@/hooks/useUsers"
 import { useZones } from "@/hooks/useZones"
@@ -51,6 +51,17 @@ type FormState = {
   role: ProfileRole
 }
 
+type EditFormState = {
+  id: string
+  userId: string
+  username: string
+  email: string
+  phone: string
+  zoneId: string
+  role: ProfileRole
+  password: string
+}
+
 const defaultForm: FormState = {
   fullName: "",
   username: "",
@@ -78,11 +89,14 @@ const roleMeta: Record<ProfileRole, { label: string; variant: "default" | "secon
 }
 
 export function ParametrageUsersTab() {
-  const { users, loading, error, createUser, updateUserRole } = useUsers()
+  const { users, loading, error, createUser, updateUserRole, updateUserDetails } = useUsers()
   const { zones } = useZones()
   const [open, setOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [form, setForm] = useState<FormState>(defaultForm)
+  const [editForm, setEditForm] = useState<EditFormState | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [editSubmitting, setEditSubmitting] = useState(false)
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
 
   const usersCountLabel = useMemo(() => `${users.length} utilisateur(s)`, [users.length])
@@ -132,6 +146,52 @@ export function ParametrageUsersTab() {
       toast.success("Role mis a jour")
     }
     setBusyUserId(null)
+  }
+
+  function openEditDialog(user: Profile) {
+    setEditForm({
+      id: user.id,
+      userId: user.user_id,
+      username: user.username ?? "",
+      email: user.email ?? "",
+      phone: user.phone ?? "",
+      zoneId: user.zone_id ?? "none",
+      role: user.function ?? "other",
+      password: "",
+    })
+    setEditOpen(true)
+  }
+
+  async function handleUpdateUser(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!editForm) return
+
+    setEditSubmitting(true)
+    const result = await updateUserDetails({
+      id: editForm.id,
+      userId: editForm.userId,
+      username: editForm.username.trim(),
+      email: editForm.email.trim(),
+      phone: editForm.phone.trim() || null,
+      zoneId: editForm.zoneId === "none" ? null : editForm.zoneId,
+      role: editForm.role,
+      password: editForm.password.trim() || undefined,
+    })
+
+    if (!result.success) {
+      toast.error(result.error ?? "Impossible de modifier l'utilisateur")
+      setEditSubmitting(false)
+      return
+    }
+
+    toast.success(
+      editForm.password.trim()
+        ? "Utilisateur mis a jour et mot de passe reinitialise"
+        : "Informations utilisateur mises a jour",
+    )
+    setEditOpen(false)
+    setEditForm(null)
+    setEditSubmitting(false)
   }
 
   return (
@@ -273,12 +333,13 @@ export function ParametrageUsersTab() {
                 <TableHead className="font-semibold">Role</TableHead>
                 <TableHead className="font-semibold">Cree le</TableHead>
                 <TableHead className="font-semibold">ID auth</TableHead>
+                <TableHead className="font-semibold text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                     Chargement des utilisateurs...
                   </TableCell>
                 </TableRow>
@@ -286,7 +347,7 @@ export function ParametrageUsersTab() {
 
               {!loading && error && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-red-500">
+                  <TableCell colSpan={7} className="py-8 text-center text-red-500">
                     {error}
                   </TableCell>
                 </TableRow>
@@ -357,12 +418,24 @@ export function ParametrageUsersTab() {
                     <TableCell className="font-mono text-xs text-muted-foreground">
                       {user.user_id}
                     </TableCell>
+
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1.5"
+                        onClick={() => openEditDialog(user)}
+                      >
+                        <Edit className="h-3.5 w-3.5" />
+                        Modifier
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
 
               {!loading && !error && users.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                     Aucun utilisateur trouve.
                   </TableCell>
                 </TableRow>
@@ -370,6 +443,151 @@ export function ParametrageUsersTab() {
             </TableBody>
           </Table>
         </div>
+
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Modifier un utilisateur</DialogTitle>
+              <DialogDescription>
+                Modifiez les informations du profil et, si besoin, initialisez un nouveau mot de passe.
+              </DialogDescription>
+            </DialogHeader>
+
+            {editForm && (
+              <form className="space-y-4" onSubmit={handleUpdateUser}>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-username">Nom utilisateur</Label>
+                  <Input
+                    id="edit-username"
+                    value={editForm.username}
+                    onChange={(event) =>
+                      setEditForm((current) =>
+                        current ? { ...current, username: event.target.value } : current,
+                      )
+                    }
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-email">Email</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={editForm.email}
+                    onChange={(event) =>
+                      setEditForm((current) =>
+                        current ? { ...current, email: event.target.value } : current,
+                      )
+                    }
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-phone">Telephone</Label>
+                  <Input
+                    id="edit-phone"
+                    value={editForm.phone}
+                    onChange={(event) =>
+                      setEditForm((current) =>
+                        current ? { ...current, phone: event.target.value } : current,
+                      )
+                    }
+                    placeholder="+257 ..."
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Zone</Label>
+                    <Select
+                      value={editForm.zoneId}
+                      onValueChange={(value) =>
+                        setEditForm((current) =>
+                          current ? { ...current, zoneId: value } : current,
+                        )
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selectionner une zone" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Non assigne</SelectItem>
+                        {zones.map((zone) => (
+                          <SelectItem key={zone.id} value={zone.id}>
+                            {zone.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Role</Label>
+                    <Select
+                      value={editForm.role}
+                      onValueChange={(value) =>
+                        setEditForm((current) =>
+                          current ? { ...current, role: value as ProfileRole } : current,
+                        )
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="collector">Collector</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-password">Initialiser un nouveau mot de passe</Label>
+                  <div className="relative">
+                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="edit-password"
+                      type="password"
+                      className="pl-9"
+                      placeholder="Laisser vide pour conserver l'actuel"
+                      value={editForm.password}
+                      onChange={(event) =>
+                        setEditForm((current) =>
+                          current ? { ...current, password: event.target.value } : current,
+                        )
+                      }
+                      minLength={6}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Si ce champ est rempli, le mot de passe sera reinitialise.
+                  </p>
+                </div>
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setEditOpen(false)
+                      setEditForm(null)
+                    }}
+                  >
+                    Annuler
+                  </Button>
+                  <Button type="submit" disabled={editSubmitting}>
+                    {editSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Enregistrer
+                  </Button>
+                </DialogFooter>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   )
