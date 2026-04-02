@@ -26,6 +26,22 @@ const updateRoleSchema = z.object({
   role: roleSchema,
 })
 
+const updateUserSchema = z.object({
+  id: z.string().uuid("ID profil invalide"),
+  userId: z.string().uuid("ID auth invalide"),
+  username: z.string().trim().min(3, "Le nom utilisateur doit contenir au moins 3 caracteres"),
+  email: z.string().email("Email invalide"),
+  phone: z.string().trim().min(3, "Telephone invalide").nullable().optional(),
+  zoneId: z.string().uuid("Zone invalide").nullable().optional(),
+  role: roleSchema,
+  password: z
+    .string()
+    .trim()
+    .min(6, "Le mot de passe doit contenir au moins 6 caracteres")
+    .optional()
+    .or(z.literal("")),
+})
+
 const roleValues: ProfileRole[] = ["admin", "collector", "other"]
 
 function normalizeRole(value: unknown): ProfileRole {
@@ -154,6 +170,49 @@ export async function updateUserRoleAction(
     }
 
     return { success: true, data: { id: payload.id, role: payload.role } }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erreur inattendue"
+    return { success: false, error: message }
+  }
+}
+
+export async function updateUserDetailsAction(
+  input: z.infer<typeof updateUserSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    await assertAdmin()
+    const payload = updateUserSchema.parse(input)
+    const adminClient = createAdminClient()
+
+    const normalizedPassword = payload.password?.trim() || undefined
+
+    const { error: authError } = await adminClient.auth.admin.updateUserById(payload.userId, {
+      email: payload.email,
+      password: normalizedPassword,
+      user_metadata: { username: payload.username },
+      app_metadata: { function: payload.role },
+    })
+
+    if (authError) {
+      return { success: false, error: authError.message }
+    }
+
+    const { error: profileError } = await adminClient
+      .from("user_profile")
+      .update({
+        username: payload.username,
+        email: payload.email,
+        phone: payload.phone?.trim() || null,
+        zone_id: payload.zoneId ?? null,
+        function: payload.role,
+      })
+      .eq("id", payload.id)
+
+    if (profileError) {
+      return { success: false, error: profileError.message }
+    }
+
+    return { success: true, data: { id: payload.id } }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur inattendue"
     return { success: false, error: message }

@@ -5,6 +5,7 @@ import type { Profile, ProfileRole } from "@/types/db"
 import { createClient } from "@/lib/supabase/client"
 import {
   createUserWithProfileAction,
+  updateUserDetailsAction,
   updateUserRoleAction,
 } from "@/actions/users"
 
@@ -14,6 +15,17 @@ type CreateUserInput = {
   password: string
   username?: string
   role: ProfileRole
+}
+
+type UpdateUserInput = {
+  id: string
+  userId: string
+  username: string
+  email: string
+  phone?: string | null
+  zoneId?: string | null
+  role: ProfileRole
+  password?: string
 }
 
 export function useUsers() {
@@ -74,6 +86,20 @@ export function useUsers() {
     [users],
   )
 
+  const updateUserDetails = useCallback(
+    async (payload: UpdateUserInput) => {
+      const result = await updateUserDetailsAction(payload)
+      if (!result.success) {
+        setError(result.error ?? "Impossible de modifier l'utilisateur")
+        return result
+      }
+
+      await refetch()
+      return result
+    },
+    [refetch],
+  )
+
   useEffect(() => {
     void refetch()
   }, [refetch])
@@ -84,6 +110,7 @@ export function useUsers() {
     error,
     createUser,
     updateUserRole,
+    updateUserDetails,
     refetch,
   }
 }
