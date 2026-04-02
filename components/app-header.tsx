@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { Bell, Loader2, LogOut, Search } from "lucide-react"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
@@ -118,7 +119,9 @@ export function AppHeader({ breadcrumbs = [] }: AppHeaderProps) {
             </div>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="text-xs">Mon compte</DropdownMenuLabel>
-            <DropdownMenuItem>Profil</DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/profil">Profil</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem>Preferences</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

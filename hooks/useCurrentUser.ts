@@ -49,7 +49,16 @@ export function useCurrentUser() {
       }
     }
 
-    fetchUser()
+    void fetchUser()
+
+    const handleProfileUpdated = () => {
+      void fetchUser()
+    }
+
+    window.addEventListener("user-profile-updated", handleProfileUpdated)
+    return () => {
+      window.removeEventListener("user-profile-updated", handleProfileUpdated)
+    }
   }, [])
 
   return { user, loading, error }
