@@ -117,8 +117,8 @@ export default function CarnetsPage() {
   const [totalCount, setTotalCount] = useState(0)
 
   const [totals, setTotals] = useState({
-    cdf: { initial: 0, collected: 0, savings: 0 },
-    usd: { initial: 0, collected: 0, savings: 0 },
+    cdf: { initial: 0, collected: 0, savings: 0, price: 0 },
+    usd: { initial: 0, collected: 0, savings: 0, price: 0 },
   })
   const [counts, setCounts] = useState({
     active: 0,
@@ -210,7 +210,7 @@ export default function CarnetsPage() {
 
   useEffect(() => {
     async function fetchTotals() {
-      let carnetQuery = supabase.from("carnet").select("id, initial_amount, currency, month, is_archived")
+      let carnetQuery = supabase.from("carnet").select("id, initial_amount, price, currency, month, is_archived")
 
       if (statusFilter !== "all") {
         carnetQuery = carnetQuery.eq("is_archived", statusFilter === "closed")
@@ -233,8 +233,8 @@ export default function CarnetsPage() {
         cotisationsQuery = cotisationsQuery.in("carnet_id", filteredCarnetIds)
       } else {
         setTotals({
-          cdf: { initial: 0, collected: 0, savings: 0 },
-          usd: { initial: 0, collected: 0, savings: 0 },
+          cdf: { initial: 0, collected: 0, savings: 0, price: 0 },
+          usd: { initial: 0, collected: 0, savings: 0, price: 0 },
         })
         return
       }
@@ -243,8 +243,9 @@ export default function CarnetsPage() {
 
       const calculate = (curr: number) => {
         const initial = (carnetsData ?? []).filter(c => c.currency === curr).reduce((sum, c) => sum + Number(c.initial_amount), 0)
+        const price = (carnetsData ?? []).filter(c => c.currency === curr).reduce((sum, c) => sum + Number(c.price), 0)
         const cotisations = (cotisationsData ?? []).filter(c => c.currency === curr).reduce((sum, c) => sum + Number(c.amount), 0)
-        return { initial, collected: initial + cotisations, savings: cotisations }
+        return { initial, collected: initial + cotisations, savings: cotisations, price }
       }
 
       setTotals({
@@ -395,7 +396,7 @@ export default function CarnetsPage() {
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-2">Totaux Franc Congolais (CDF)</span>
             <div className="h-px flex-1 bg-border/60"></div>
           </div>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
             <Card className="bg-primary/5 border-primary/20">
               <CardContent className="flex items-center gap-3 p-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -431,6 +432,19 @@ export default function CarnetsPage() {
                   <p className="text-xs text-muted-foreground uppercase font-semibold">Épargne Totale CDF</p>
                   <p className="text-lg font-bold text-foreground">
                     {new Intl.NumberFormat("fr-FR").format(totals.cdf.savings)} CDF
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-amber-500/5 border-amber-500/20">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
+                  <BookOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase font-semibold">Total Prix Carnets CDF</p>
+                  <p className="text-lg font-bold text-foreground">
+                    {new Intl.NumberFormat("fr-FR").format(totals.cdf.price)} CDF
                   </p>
                 </div>
               </CardContent>

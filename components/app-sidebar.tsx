@@ -11,9 +11,11 @@ import {
   Coins,
   History,
   BarChart3,
+  BadgeDollarSign,
   Settings,
   Wallet,
   LogOut,
+  Loader2,
 } from "lucide-react"
 import {
   Sidebar,
@@ -30,6 +32,7 @@ import {
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import type { CurrentUser } from "@/actions/user"
+import { useLogout } from "@/hooks/useLogout"
 
 const mainNav = [
   { title: "Tableau de bord", href: "/dashboard", icon: LayoutDashboard },
@@ -46,11 +49,13 @@ const operationsNav = [
 const systemNav = [
   { title: "Historique", href: "/historique", icon: History },
   { title: "Rapports", href: "/rapports", icon: BarChart3 },
+  { title: "Finance", href: "/finance", icon: BadgeDollarSign },
   { title: "Parametrage", href: "/parametrage", icon: Settings },
 ]
 
 export function AppSidebar({ user }: { user: CurrentUser | null }) {
   const pathname = usePathname()
+  const { logout, isPending } = useLogout()
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard"
@@ -143,22 +148,44 @@ export function AppSidebar({ user }: { user: CurrentUser | null }) {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
-        <div className="flex items-center gap-3 rounded-lg p-2 group-data-[collapsible=icon]:justify-center">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-              {user?.initials ?? "??"}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col group-data-[collapsible=icon]:hidden min-w-0">
-            <span className="text-sm font-medium text-foreground truncate">
-              {user?.username ?? "Utilisateur"}
-            </span>
-            <span className="text-[11px] text-muted-foreground">
-              {user?.zone ? `${user.role} · ${user.zone}` : user?.role ?? ""}
-            </span>
-          </div>
-        </div>
+      <SidebarFooter className="p-3 border-t">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3 rounded-lg p-2 group-data-[collapsible=icon]:justify-center">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                    {user?.initials ?? "??"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col group-data-[collapsible=icon]:hidden min-w-0">
+                  <span className="text-sm font-medium text-foreground truncate">
+                    {user?.username ?? "Utilisateur"}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {user?.zone ? `${user.role} · ${user.zone}` : user?.role ?? ""}
+                  </span>
+                </div>
+              </div>
+
+              <SidebarMenuButton
+                onClick={logout}
+                disabled={isPending}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 group-data-[collapsible=icon]:justify-center"
+                tooltip="Se deconnecter"
+              >
+                {isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <LogOut className="h-4 w-4" />
+                )}
+                <span className="group-data-[collapsible=icon]:hidden">
+                  {isPending ? "Deconnexion..." : "Se deconnecter"}
+                </span>
+              </SidebarMenuButton>
+            </div>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

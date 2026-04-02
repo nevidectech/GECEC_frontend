@@ -144,27 +144,8 @@ export function LoginForm() {
                 </Form>
             </CardContent>
             <CardFooter className="flex flex-col space-y-4">
-                <div className="relative w-full">
-                    <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-white px-2 text-muted-foreground">Ou continuer avec</span>
-                    </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <Button variant="outline" className="h-10" disabled>
-                        Google
-                    </Button>
-                    <Button variant="outline" className="h-10" disabled>
-                        GitHub
-                    </Button>
-                </div>
-                <p className="text-center text-sm text-muted-foreground">
-                    Vous n&apos;avez pas de compte ?{" "}
-                    <Link href="/register" className="font-semibold text-primary hover:underline">
-                        S&apos;inscrire
-                    </Link>
+                <p className="text-center text-xs text-muted-foreground pt-4">
+                    Système de gestion interne GECEC Finance
                 </p>
             </CardFooter>
         </Card>
