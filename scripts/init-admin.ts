@@ -20,47 +20,50 @@ const supabase = createClient(url, serviceRoleKey, {
 })
 
 async function initAdmin() {
-    const email = "admin@admin.com"
-    const password = "VOTRE_MOT_DE_PASSE_ICI" // Changez ceci !
+    const email = process.env.ADMIN_EMAIL || "admin@admin.com"
+    const password = process.env.ADMIN_PASSWORD || "admin1234"
 
     console.log(`Initialisation de l'utilisateur ${email}...`)
 
-    // 1. Créer l'utilisateur dans Auth
-    const { data: userData, error: authError } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { full_name: "Administrateur Système", username: "admin" },
-        app_metadata: { function: "admin" },
-    })
-
-    if (authError) {
-        if (authError.message.includes("already registered")) {
-            console.log("L'utilisateur existe déjà dans Auth. Mise à jour du mot de passe...")
-            // Si l'utilisateur existe déjà, on peut réinitialiser son mot de passe
-            const { data: listData } = await supabase.auth.admin.listUsers()
-            const existingUser = listData?.users.find((u) => u.email === email)
-
-            if (existingUser) {
-                const { error: updateError } = await supabase.auth.admin.updateUserById(existingUser.id, {
-                    password,
-                })
-                if (updateError) {
-                    console.error("Erreur lors de la mise à jour du mot de passe :", updateError.message)
-                    return
-                }
-                console.log("Mot de passe mis à jour avec succès.")
-                await updateProfile(existingUser.id, email)
-            }
-        } else {
-            console.error("Erreur Auth :", authError.message)
-        }
+    // 1. Vérifier si l'utilisateur existe déjà
+    const { data: listData, error: listError } = await supabase.auth.admin.listUsers()
+    if (listError) {
+        console.error("Erreur lors de la récupération des utilisateurs :", listError.message)
         return
     }
 
-    if (userData?.user) {
-        console.log("Utilisateur créé avec succès dans Auth.")
-        await updateProfile(userData.user.id, email)
+    const existingUser = listData?.users.find((u) => u.email?.toLowerCase() === email.toLowerCase())
+
+    if (existingUser) {
+        console.log("L'utilisateur existe déjà dans Auth. Mise à jour du mot de passe...")
+        const { error: updateError } = await supabase.auth.admin.updateUserById(existingUser.id, {
+            password,
+        })
+        if (updateError) {
+            console.error("Erreur lors de la mise à jour du mot de passe :", updateError.message)
+            return
+        }
+        console.log("Mot de passe mis à jour avec succès.")
+        await updateProfile(existingUser.id, email)
+    } else {
+        // 2. Créer l'utilisateur dans Auth
+        const { data: userData, error: authError } = await supabase.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true,
+            user_metadata: { full_name: "Administrateur Système", username: "admin" },
+            app_metadata: { function: "admin" },
+        })
+
+        if (authError) {
+            console.error("Erreur Auth lors de la création :", authError.message)
+            return
+        }
+
+        if (userData?.user) {
+            console.log("Utilisateur créé avec succès dans Auth.")
+            await updateProfile(userData.user.id, email)
+        }
     }
 }
 

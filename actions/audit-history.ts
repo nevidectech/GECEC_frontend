@@ -58,10 +58,10 @@ export async function getAuditHistoryAction(limit: number = 50): Promise<ActionR
       cotisations.forEach((cot: any) => {
         const user = cot.created_by?.username || "Utilisateur inconnu"
         const role = cot.created_by?.user_profile?.function || "Agent"
-        const clientName = cot.carnet?.client?.[0]?.first_name 
+        const clientName = cot.carnet?.client?.[0]?.first_name
           ? `${cot.carnet.client[0].first_name} ${cot.carnet.client[0].last_name || ""}`
           : "Client inconnu"
-        
+
         logs.push({
           id: `cotisation-${cot.id}`,
           action: "Depot enregistre",
@@ -96,8 +96,8 @@ export async function getAuditHistoryAction(limit: number = 50): Promise<ActionR
     if (!withdrawalsError && withdrawals) {
       withdrawals.forEach((w: any) => {
         const user = w.created_by || "Utilisateur inconnu"
-        const action = w.withdrawal_type === 1 ? "Retrait initie" : "Retrait valide"
-        
+        const action = w.withdrawal_type === 2 ? "Retrait anticipe" : "Retrait normal"
+
         logs.push({
           id: `withdrawal-${w.id}`,
           action,
