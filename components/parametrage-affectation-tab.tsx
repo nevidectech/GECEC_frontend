@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Loader2, Pencil, Plus, Unlink2 } from "lucide-react"
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useAffectations } from "@/hooks/useAffectations"
 import { useUsers } from "@/hooks/useUsers"
@@ -31,6 +31,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   Table,
   TableBody,
@@ -63,6 +73,8 @@ export function ParametrageAffectationTab() {
   const [createForm, setCreateForm] = useState<FormState>(emptyForm)
   const [editForm, setEditForm] = useState<FormState>(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   const countLabel = useMemo(() => `${affectations.length} affectation(s) active(s)`, [affectations.length])
 
@@ -116,16 +128,24 @@ export function ParametrageAffectationTab() {
     setSubmitting(false)
   }
 
-  async function handleUnassign(id: string) {
-    if (!window.confirm("Desaffecter cet utilisateur de la zone ?")) return
-    setBusyId(id)
-    const result = await unassignAffectation(id)
+  function confirmDelete(id: string) {
+    setDeleteId(id)
+    setDeleteOpen(true)
+  }
+
+  async function handleUnassign() {
+    if (!deleteId) return
+    setBusyId(deleteId)
+    setDeleteOpen(false)
+
+    const result = await unassignAffectation(deleteId)
     if (!result.success) {
       toast.error(result.error ?? "Impossible de desaffecter")
     } else {
       toast.success("Utilisateur desaffecte")
     }
     setBusyId(null)
+    setDeleteId(null)
   }
 
   return (
@@ -257,14 +277,14 @@ export function ParametrageAffectationTab() {
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
+                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 px-2 text-red-500 hover:text-red-600"
+                          className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
                           disabled={busyId === item.id}
-                          onClick={() => handleUnassign(item.id)}
+                          onClick={() => confirmDelete(item.id)}
                         >
-                          <Unlink2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </TableCell>
@@ -341,6 +361,29 @@ export function ParametrageAffectationTab() {
           </form>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
+              <Trash2 className="h-6 w-6 text-red-600 dark:text-red-400" />
+            </div>
+            <AlertDialogTitle>Supprimer l&apos;affectation ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action retirera l&apos;accès de l&apos;utilisateur à cette zone.
+              Toutes les données historiques seront conservées mais l&apos;utilisateur ne pourra plus effectuer de nouvelles opérations dans cette zone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUnassign}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Confirmer la suppression
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

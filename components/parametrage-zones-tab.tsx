@@ -24,6 +24,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Table,
   TableBody,
   TableCell,
@@ -51,6 +61,8 @@ export function ParametrageZonesTab() {
   const [createForm, setCreateForm] = useState<FormState>(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<FormState>(emptyForm)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   const zonesCountLabel = useMemo(() => `${zones.length} zone(s)`, [zones.length])
 
@@ -94,17 +106,24 @@ export function ParametrageZonesTab() {
     setSubmitting(false)
   }
 
-  async function handleDelete(id: string) {
-    if (!window.confirm("Supprimer cette zone ?")) return
+  function confirmDelete(id: string) {
+    setDeleteId(id)
+    setDeleteOpen(true)
+  }
 
-    setBusyId(id)
-    const result = await deleteZone(id)
+  async function handleDelete() {
+    if (!deleteId) return
+    setBusyId(deleteId)
+    setDeleteOpen(false)
+
+    const result = await deleteZone(deleteId)
     if (!result.success) {
       toast.error(result.error ?? "Impossible de supprimer la zone")
     } else {
       toast.success("Zone supprimee avec succes")
     }
     setBusyId(null)
+    setDeleteId(null)
   }
 
   return (
@@ -214,12 +233,12 @@ export function ParametrageZonesTab() {
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
+                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 px-2 text-red-500 hover:text-red-600"
+                          className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
                           disabled={busyId === zone.id}
-                          onClick={() => handleDelete(zone.id)}
+                          onClick={() => confirmDelete(zone.id)}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -283,6 +302,28 @@ export function ParametrageZonesTab() {
           </form>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
+              <Trash2 className="h-6 w-6 text-red-600 dark:text-red-400" />
+            </div>
+            <AlertDialogTitle>Supprimer la zone ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Toutes les affectations liées à cette zone seront également supprimées.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Confirmer la suppression
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }
