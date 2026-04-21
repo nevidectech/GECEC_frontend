@@ -65,7 +65,7 @@ export async function createWithdrawalAction(
       (sum, item) => sum + Number(item.amount ?? 0),
       0,
     )
-    const amount = totalCotisations - Number(carnet.initial_amount ?? 0)
+    const amount = totalCotisations
 
     if (amount <= 0) {
       return {
@@ -85,7 +85,7 @@ export async function createWithdrawalAction(
       59,
       999,
     )
-    const computedWithdrawalType = withdrawalDate < endOfCreatedMonth ? 1 : 0
+    const computedWithdrawalType = withdrawalDate < endOfCreatedMonth ? 2 : 1
 
     const { data: createdWithdrawal, error: createError } = await adminClient
       .from("withdrawal")

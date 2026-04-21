@@ -16,6 +16,7 @@ import {
   Wallet,
   LogOut,
   Loader2,
+  ListChecks,
 } from "lucide-react"
 import {
   Sidebar,
@@ -43,6 +44,7 @@ const mainNav = [
 const operationsNav = [
   { title: "Retraits", href: "/retraits", icon: ArrowUpFromLine },
   { title: "Depot & Collecte", href: "/depot", icon: ArrowDownToLine },
+  { title: "Cotisations", href: "/cotisations", icon: ListChecks },
   { title: "Remuneration", href: "/remuneration", icon: Coins },
 ]
 

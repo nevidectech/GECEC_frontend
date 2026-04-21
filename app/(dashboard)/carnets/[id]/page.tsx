@@ -28,9 +28,23 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { createClient } from "@/lib/supabase/client"
 import type { Carnet, CarnetDuplicate, Cotisation, Withdrawal } from "@/types/db"
 import { createWithdrawalAction } from "@/actions/withdrawals"
+import { archiveCarnetAction } from "@/actions/carnets"
+import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 import {
   ArrowUpFromLine,
   Copy,
@@ -41,6 +55,7 @@ import {
   TrendingUp,
   User,
   MapPin,
+  AlertTriangle,
 } from "lucide-react"
 
 const currencyMap: Record<number, string> = {
@@ -75,6 +90,8 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
     orderType: "1",
     proofUrl: "",
   })
+  const [archiveSubmitting, setArchiveSubmitting] = useState(false)
+  const router = useRouter()
 
   useEffect(() => {
     async function fetchData() {
@@ -139,7 +156,7 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
   const averageCotisation = cotisations.length > 0 ? cotisationsTotal / cotisations.length : 0
   const baseAmount = Number(carnet?.initial_amount ?? 0)
   const estimatedBalance = baseAmount + cotisationsTotal - withdrawalsTotal
-  const withdrawableAmount = cotisationsTotal - baseAmount
+  const withdrawableAmount = cotisationsTotal
   const progress = Math.max(0, Math.min(100, (estimatedBalance / Math.max(baseAmount, 1)) * 100))
   const headerNumber = carnet?.number ?? id
   const headerStatus = carnet?.is_archived ? "closed" : "active"
@@ -150,8 +167,8 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
     2: "Collecteur",
   }
   const withdrawalTypeLabel: Record<number, string> = {
-    0: "Normal",
-    1: "Anticipe",
+    1: "Normal",
+    2: "Anticipe",
   }
 
   async function handleCreateWithdrawal(event: React.FormEvent<HTMLFormElement>) {
@@ -193,6 +210,19 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
       orderType: "1",
       proofUrl: "",
     })
+  }
+
+  async function handleArchiveCarnet() {
+    setArchiveSubmitting(true)
+    const result = await archiveCarnetAction(id)
+    setArchiveSubmitting(false)
+
+    if (result.success) {
+      toast.success("Le carnet a été clôturé avec succès")
+      router.refresh()
+    } else {
+      toast.error(result.error || "Une erreur est survenue lors de la clôture")
+    }
   }
 
   return (
@@ -240,77 +270,112 @@ export default function CarnetDetailPage({ params }: { params: Promise<{ id: str
               Imprimer
             </Button>
             {!carnet?.is_archived && (
-              <Dialog open={withdrawalOpen} onOpenChange={setWithdrawalOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm" className="gap-1.5">
-                    <ArrowUpFromLine className="h-3.5 w-3.5" />
-                    Retrait
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Nouveau retrait</DialogTitle>
-                    <DialogDescription>
-                      Montant calcule automatiquement: {formatMoney(Math.max(0, withdrawableAmount), headerCurrency)}
-                    </DialogDescription>
-                  </DialogHeader>
-
-                  <form className="space-y-4" onSubmit={handleCreateWithdrawal}>
-                    <div className="space-y-2">
-                      <Label>Ordre de retrait</Label>
-                      <Select
-                        value={withdrawalForm.orderType}
-                        onValueChange={(value) =>
-                          setWithdrawalForm((current) => ({ ...current, orderType: value }))
-                        }
+              <div className="flex items-center gap-2">
+                {headerStatus !== "closed" && withdrawableAmount <= 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="gap-2 text-destructive border-destructive/20 hover:bg-destructive/10"
+                        disabled={archiveSubmitting}
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selectionner le type d'ordre" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1">Titulaire (lui-meme)</SelectItem>
-                          <SelectItem value="2">Collecteur</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Type de retrait</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Calcule automatiquement (1=anticipe avant fin du mois, 0=normal fin de mois)
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Numero de carte</Label>
-                      <p className="text-sm text-muted-foreground font-mono">
-                        {carnet?.number ?? "-"}
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="proof-url">URL preuve (optionnel)</Label>
-                      <Input
-                        id="proof-url"
-                        placeholder="https://..."
-                        value={withdrawalForm.proofUrl}
-                        onChange={(event) =>
-                          setWithdrawalForm((current) => ({ ...current, proofUrl: event.target.value }))
-                        }
-                      />
-                    </div>
-
-                    <DialogFooter>
-                      <Button type="button" variant="outline" onClick={() => setWithdrawalOpen(false)}>
-                        Annuler
+                        <AlertTriangle className="h-4 w-4" />
+                        {archiveSubmitting ? "Clôture..." : "Clôturer le carnet"}
                       </Button>
-                      <Button type="submit" disabled={withdrawalSubmitting || withdrawableAmount <= 0}>
-                        {withdrawalSubmitting ? "Creation..." : "Valider retrait"}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Êtes-vous absolument sûr ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Cette action va clôturer définitivement le carnet {headerNumber}.
+                          Vous ne pourrez plus enregistrer de cotisations ou de retraits sur ce carnet.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleArchiveCarnet}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Clôturer définitivement
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+
+                <Dialog open={withdrawalOpen} onOpenChange={setWithdrawalOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="gap-1.5">
+                      <ArrowUpFromLine className="h-3.5 w-3.5" />
+                      Retrait
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Nouveau retrait</DialogTitle>
+                      <DialogDescription>
+                        Montant calcule automatiquement: {formatMoney(Math.max(0, withdrawableAmount), headerCurrency)}
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <form className="space-y-4" onSubmit={handleCreateWithdrawal}>
+                      <div className="space-y-2">
+                        <Label>Ordre de retrait</Label>
+                        <Select
+                          value={withdrawalForm.orderType}
+                          onValueChange={(value) =>
+                            setWithdrawalForm((current) => ({ ...current, orderType: value }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selectionner le type d'ordre" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">Titulaire (lui-meme)</SelectItem>
+                            <SelectItem value="2">Collecteur</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Type de retrait</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Calcule automatiquement (2=anticipe avant fin du mois, 1=normal fin de mois)
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Numero de carte</Label>
+                        <p className="text-sm text-muted-foreground font-mono">
+                          {carnet?.number ?? "-"}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="proof-url">URL preuve (optionnel)</Label>
+                        <Input
+                          id="proof-url"
+                          placeholder="https://..."
+                          value={withdrawalForm.proofUrl}
+                          onChange={(event) =>
+                            setWithdrawalForm((current) => ({ ...current, proofUrl: event.target.value }))
+                          }
+                        />
+                      </div>
+
+                      <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setWithdrawalOpen(false)}>
+                          Annuler
+                        </Button>
+                        <Button type="submit" disabled={withdrawalSubmitting || withdrawableAmount <= 0}>
+                          {withdrawalSubmitting ? "Creation..." : "Valider retrait"}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
             )}
           </div>
         </div>

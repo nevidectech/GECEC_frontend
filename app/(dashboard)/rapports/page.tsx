@@ -45,6 +45,7 @@ import {
   Wallet,
 } from "lucide-react"
 import { getReportsDataAction, type ReportPeriod, type ReportStats } from "@/actions/reports"
+import { toast } from "sonner"
 
 const predefinedReports = [
   {
@@ -80,7 +81,7 @@ const periods: Array<{ value: ReportPeriod; label: string }> = [
 ]
 
 function formatCurrency(value: number) {
-  return `${value.toLocaleString("fr-FR")} FC`
+  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " FC"
 }
 
 function formatCompactCurrency(value: number) {
@@ -134,6 +135,111 @@ export default function RapportsPage() {
   const averageDeposit = reportData?.averageDeposit || 0
   const averageWithdrawal = reportData?.averageWithdrawal || 0
   const periodLabel = reportData?.periodLabel || periods.find((item) => item.value === period)?.label || ""
+
+  const handleExportZonesCsv = () => {
+    if (zoneReport.length === 0) return
+    
+    const headers = ["Zone", "Clients", "Carnets", "Epargne Totale", "Collecteurs"]
+    const rows = zoneReport.map(z => [
+      z.zone,
+      z.clients.toString(),
+      z.carnets.toString(),
+      z.epargne.toString(),
+      z.collecteurs.toString()
+    ])
+    
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const link = document.createElement("a")
+    const url = URL.createObjectURL(blob)
+    link.setAttribute("href", url)
+    link.setAttribute("download", `rapport_zones_${period}.csv`)
+    link.style.visibility = "hidden"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    toast.success("Rapport CSV exporté")
+  }
+
+  const handleExportPredefined = async (reportName: string, format: "pdf" | "excel") => {
+    try {
+      toast.loading(`Génération du rapport ${reportName}...`, { id: "report-export" })
+
+      if (format === "excel") {
+        const { utils, writeFile } = await import("xlsx")
+        let data: any[] = []
+        
+        if (reportName.includes("zone")) {
+          data = zoneReport.map(z => ({
+            "Zone": z.zone,
+            "Clients": z.clients,
+            "Carnets": z.carnets,
+            "Epargne (FC)": z.epargne,
+            "Collecteurs": z.collecteurs
+          }))
+        } else if (reportName.includes("mensuel")) {
+          data = monthlyReport.map(m => ({
+            "Mois": m.month,
+            "Dépôts (FC)": m.depots,
+            "Retraits (FC)": m.retraits,
+            "Solde Net (FC)": m.soldeNet
+          }))
+        } else {
+          data = [
+            { "Indicateur": "Clients actifs", "Valeur": totalClients },
+            { "Indicateur": "Carnets actifs", "Valeur": totalCarnets },
+            { "Indicateur": "Total dépôts (FC)", "Valeur": totalDeposits },
+            { "Indicateur": "Total retraits (FC)", "Valeur": totalWithdrawals },
+            { "Indicateur": "Solde net (FC)", "Valeur": netBalance }
+          ]
+        }
+
+        const ws = utils.json_to_sheet(data)
+        const wb = utils.book_new()
+        utils.book_append_sheet(wb, ws, "Rapport")
+        writeFile(wb, `${reportName.replace(/ /g, "_")}.xlsx`)
+        toast.success("Fichier Excel généré", { id: "report-export" })
+        return
+      }
+
+      // PDF Export
+      const { jsPDF } = await import("jspdf")
+      const autoTable = (await import("jspdf-autotable")).default
+      const doc = new jsPDF()
+
+      doc.setFontSize(18)
+      doc.text(reportName.toUpperCase(), 105, 15, { align: "center" })
+      doc.setFontSize(10)
+      doc.text(`Période: ${periodLabel}`, 14, 25)
+      doc.text(`Généré le: ${new Date().toLocaleString("fr-FR")}`, 14, 30)
+
+      if (reportName.includes("zone")) {
+        autoTable(doc, {
+          startY: 40,
+          head: [["Zone", "Clients", "Carnets", "Epargne"]],
+          body: zoneReport.map(z => [z.zone, z.clients, z.carnets, formatCurrency(z.epargne)]),
+        })
+      } else if (reportName.includes("mensuel")) {
+        autoTable(doc, {
+          startY: 40,
+          head: [["Mois", "Dépôts", "Retraits", "Solde Net"]],
+          body: monthlyReport.map(m => [m.month, formatCurrency(m.depots), formatCurrency(m.retraits), formatCurrency(m.soldeNet)]),
+        })
+      } else {
+        doc.text("Détails du rapport:", 14, 40)
+        doc.text(`- Clients totaux: ${totalClients.toLocaleString()}`, 20, 50)
+        doc.text(`- Carnets totaux: ${totalCarnets.toLocaleString()}`, 20, 55)
+        doc.text(`- Dépôts totaux: ${formatCurrency(totalDeposits)}`, 20, 60)
+        doc.text(`- Retraits totaux: ${formatCurrency(totalWithdrawals)}`, 20, 65)
+      }
+
+      doc.save(`${reportName.replace(/ /g, "_")}.pdf`)
+      toast.success("Rapport généré", { id: "report-export" })
+    } catch (err) {
+      console.error(err)
+      toast.error(`Erreur lors de l'export ${format.toUpperCase()}`, { id: "report-export" })
+    }
+  }
 
   return (
     <>
@@ -357,7 +463,13 @@ export default function RapportsPage() {
                         <CardTitle className="text-base font-semibold">Répartition par zone géographique</CardTitle>
                         <CardDescription>Synthèse dynamique de l&apos;activité par zone</CardDescription>
                       </div>
-                      <Button variant="outline" size="sm" className="gap-1.5" disabled={zoneReport.length === 0}>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="gap-1.5" 
+                        disabled={zoneReport.length === 0}
+                        onClick={handleExportZonesCsv}
+                      >
                         <Download className="h-3.5 w-3.5" />
                         Export
                       </Button>
@@ -431,11 +543,21 @@ export default function RapportsPage() {
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-muted-foreground">{report.format}</span>
                             <div className="flex gap-1">
-                              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-7 gap-1 text-xs"
+                                onClick={() => handleExportPredefined(report.name, "pdf")}
+                              >
                                 <FileText className="h-3 w-3" />
                                 PDF
                               </Button>
-                              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-7 gap-1 text-xs"
+                                onClick={() => handleExportPredefined(report.name, "excel")}
+                              >
                                 <FileSpreadsheet className="h-3 w-3" />
                                 Excel
                               </Button>
