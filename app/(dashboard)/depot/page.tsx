@@ -26,6 +26,7 @@ import { StatusBadge } from "@/components/status-badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   ArrowDownToLine,
+  Download,
   ScanBarcode,
   Wifi,
   WifiOff,
@@ -38,6 +39,7 @@ import {
   Calculator,
   Search,
   FileText,
+  FileSpreadsheet,
 } from "lucide-react"
 import {
   listCollectorsAction,
@@ -159,6 +161,103 @@ export default function DepotPage() {
       toast.error(result.error ?? "Erreur lors de l'enregistrement")
     }
     setSubmitting(false)
+  }
+
+  const handleExportDepositsExcel = async () => {
+    if (deposits.length === 0) {
+      toast.error("Aucun dépôt à exporter")
+      return
+    }
+
+    try {
+      const { utils, writeFile } = await import("xlsx")
+      const rows = deposits.map((item) => {
+        const totalFc = item.amount_cotisation + item.amount_carnet + item.amount_duplicate + (item.amount_fiche_retrait || 0)
+        const totalUsd = item.amount_cotisation_usd || 0
+
+        return {
+          Date: new Date(item.deposit_date).toLocaleDateString("fr-FR"),
+          Collecteur: item.collector?.username || item.collector?.email || "Inconnu",
+          "Cotisations FC": item.amount_cotisation,
+          "Cotisations USD": item.amount_cotisation_usd || 0,
+          Carnets: item.amount_carnet,
+          Duplicatas: item.amount_duplicate,
+          "Fiche Retrait": item.amount_fiche_retrait || 0,
+          "Total FC": totalFc,
+          "Total USD": totalUsd,
+          Statut: item.status === "validated" ? "Validé" : "En attente",
+        }
+      })
+
+      const ws = utils.json_to_sheet(rows)
+      const wb = utils.book_new()
+      utils.book_append_sheet(wb, ws, "Depots")
+      writeFile(wb, `depots_${listFilterDate}.xlsx`)
+      toast.success("Export Excel généré")
+    } catch (error) {
+      console.error(error)
+      toast.error("Impossible de générer l'export Excel")
+    }
+  }
+
+  const handleExportDepositsPdf = async () => {
+    if (deposits.length === 0) {
+      toast.error("Aucun dépôt à exporter")
+      return
+    }
+
+    try {
+      const { jsPDF } = await import("jspdf")
+      const autoTable = (await import("jspdf-autotable")).default
+      const doc = new jsPDF({ orientation: "landscape" })
+
+      doc.setFontSize(16)
+      doc.text("LISTE DES DEPOTS", 148, 14, { align: "center" })
+      doc.setFontSize(10)
+      doc.text(`Date filtrée: ${new Date(listFilterDate + "T00:00:00").toLocaleDateString("fr-FR")}`, 14, 22)
+      doc.text(`Généré le: ${new Date().toLocaleString("fr-FR")}`, 14, 28)
+
+      autoTable(doc, {
+        startY: 34,
+        head: [[
+          "Date",
+          "Collecteur",
+          "Cotisations FC",
+          "Cotisations USD",
+          "Carnets",
+          "Duplicatas",
+          "Fiche Retrait",
+          "Total FC",
+          "Total USD",
+          "Statut",
+        ]],
+        body: deposits.map((item) => {
+          const totalFc = item.amount_cotisation + item.amount_carnet + item.amount_duplicate + (item.amount_fiche_retrait || 0)
+          const totalUsd = item.amount_cotisation_usd || 0
+
+          return [
+            new Date(item.deposit_date).toLocaleDateString("fr-FR"),
+            item.collector?.username || item.collector?.email || "Inconnu",
+            `${item.amount_cotisation.toLocaleString()} FC`,
+            `$${totalUsd.toLocaleString()}`,
+            `${item.amount_carnet.toLocaleString()} FC`,
+            `${item.amount_duplicate.toLocaleString()} FC`,
+            `${(item.amount_fiche_retrait || 0).toLocaleString()} FC`,
+            `${totalFc.toLocaleString()} FC`,
+            `$${totalUsd.toLocaleString()}`,
+            item.status === "validated" ? "Validé" : "En attente",
+          ]
+        }),
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [59, 130, 246] },
+      })
+
+      doc.save(`depots_${listFilterDate}.pdf`)
+      toast.success("Export PDF généré")
+    } catch (error) {
+      console.error(error)
+      toast.error("Impossible de générer l'export PDF")
+    }
   }
 
   const handleExportPdf = async (item: any) => {
@@ -396,6 +495,26 @@ export default function DepotPage() {
                             onChange={(e) => setListFilterDate(e.target.value)}
                           />
                         </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 h-9"
+                          onClick={handleExportDepositsPdf}
+                          disabled={loadingDeposits || deposits.length === 0}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          PDF
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 h-9"
+                          onClick={handleExportDepositsExcel}
+                          disabled={loadingDeposits || deposits.length === 0}
+                        >
+                          <FileSpreadsheet className="h-3.5 w-3.5" />
+                          Excel
+                        </Button>
                         <Button variant="outline" size="sm" className="gap-1.5 h-9">
                           <Zap className="h-3.5 w-3.5" />
                           Synchroniser

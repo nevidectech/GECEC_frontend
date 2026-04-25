@@ -142,7 +142,7 @@ async function computeRemunerationBase(periodMonth?: string): Promise<Remunerati
     adminClient
       .from("user_profile")
       .select("user_id, username, email")
-      .eq("function", "collector"),
+      .in("function", ["collector", "collecteur"]),
     adminClient
       .from("carnet")
       .select("id, initial_amount, currency, created_at, created_by")
@@ -346,68 +346,20 @@ export async function createRemunerationsForPeriodAction(
       return { success: true, data: { created: 0, updated: 0 } }
     }
 
-    const { data: upserted, error } = await adminClient
+    const { data: existingRows, error: existingError } = await adminClient
       .from("collector_remuneration" as any)
-      .upsert(payload, { onConflict: "collector_id,period_month" })
-      .select("id")
+      .select("id, collector_id")
+      .eq("period_month", base.periodMonth)
 
-    if (error) {
-      const message = String(error.message || "")
-      const code = String((error as any).code || "")
+    if (existingError) {
+      const message = String(existingError.message || "")
+      const code = String((existingError as any).code || "")
 
       if (/does not exist|could not find the table|schema cache|relation .*collector_remuneration/i.test(message) || ["PGRST205", "42P01"].includes(code)) {
         return {
           success: false,
           error: "La table collector_remuneration est introuvable. Creez-la pour activer la creation de remuneration.",
         }
-      }
-
-      // If unique constraint for upsert is missing, fallback to manual update/insert per collector.
-      if (/no unique|constraint|on conflict/i.test(message) || code === "42P10") {
-        let created = 0
-        let updated = 0
-
-        for (const item of payload) {
-          const { data: existing, error: findError } = await adminClient
-            .from("collector_remuneration" as any)
-            .select("id")
-            .eq("collector_id", item.collector_id)
-            .eq("period_month", item.period_month)
-            .maybeSingle()
-
-          if (findError) {
-            return { success: false, error: `Echec verification remuneration (${item.collector_id}): ${findError.message}` }
-          }
-
-          if (existing?.id) {
-            const { error: updateError } = await adminClient
-              .from("collector_remuneration" as any)
-              .update({
-                amount_fc: item.amount_fc,
-                amount_usd: item.amount_usd,
-                base_amount_fc: item.base_amount_fc,
-                base_amount_usd: item.base_amount_usd,
-                rate_percent: item.rate_percent,
-              })
-              .eq("id", existing.id)
-
-            if (updateError) {
-              return { success: false, error: `Echec mise a jour remuneration (${item.collector_id}): ${updateError.message}` }
-            }
-            updated += 1
-          } else {
-            const { error: insertError } = await adminClient
-              .from("collector_remuneration" as any)
-              .insert(item)
-
-            if (insertError) {
-              return { success: false, error: `Echec creation remuneration (${item.collector_id}): ${insertError.message}` }
-            }
-            created += 1
-          }
-        }
-
-        return { success: true, data: { created, updated } }
       }
 
       if (/column .* does not exist/i.test(message) || code === "42703") {
@@ -417,17 +369,86 @@ export async function createRemunerationsForPeriodAction(
         }
       }
 
-      if (/invalid input value for enum|violates check constraint/i.test(message) || code === "22P02") {
-        return {
-          success: false,
-          error: "Valeur de statut invalide en base. Verifiez que le statut accepte: a_verser, verser.",
-        }
-      }
-
       return { success: false, error: message }
     }
 
-    return { success: true, data: { created: upserted?.length ?? payload.length, updated: 0 } }
+    const existingMap = new Map(
+      (existingRows ?? []).map((row: any) => [String(row.collector_id), String(row.id)]),
+    )
+
+    let created = 0
+    let updated = 0
+
+    for (const item of payload) {
+      const existingId = existingMap.get(item.collector_id)
+
+      if (existingId) {
+        const { error: updateError } = await adminClient
+          .from("collector_remuneration" as any)
+          .update({
+            amount_fc: item.amount_fc,
+            amount_usd: item.amount_usd,
+            base_amount_fc: item.base_amount_fc,
+            base_amount_usd: item.base_amount_usd,
+            rate_percent: item.rate_percent,
+            status: item.status,
+          })
+          .eq("id", existingId)
+
+        if (updateError) {
+          const message = String(updateError.message || "")
+          const code = String((updateError as any).code || "")
+
+          if (/column .* does not exist/i.test(message) || code === "42703") {
+            return {
+              success: false,
+              error: "Structure collector_remuneration incomplete (colonnes manquantes).",
+            }
+          }
+
+          if (/invalid input value for enum|violates check constraint/i.test(message) || code === "22P02") {
+            return {
+              success: false,
+              error: "Valeur de statut invalide en base. Verifiez que le statut accepte: a_verser, verser.",
+            }
+          }
+
+          return { success: false, error: `Echec mise a jour remuneration (${item.collector_id}): ${updateError.message}` }
+        }
+
+        updated += 1
+        continue
+      }
+
+      const { error: insertError } = await adminClient
+        .from("collector_remuneration" as any)
+        .insert(item)
+
+      if (insertError) {
+        const message = String(insertError.message || "")
+        const code = String((insertError as any).code || "")
+
+        if (/column .* does not exist/i.test(message) || code === "42703") {
+          return {
+            success: false,
+            error: "Structure collector_remuneration incomplete (colonnes manquantes).",
+          }
+        }
+
+        if (/invalid input value for enum|violates check constraint/i.test(message) || code === "22P02") {
+          return {
+            success: false,
+            error: "Valeur de statut invalide en base. Verifiez que le statut accepte: a_verser, verser.",
+          }
+        }
+
+        return { success: false, error: `Echec creation remuneration (${item.collector_id}): ${insertError.message}` }
+      }
+
+      created += 1
+    }
+
+    return { success: true, data: { created, updated } }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur lors de la creation des remunerations"
     return { success: false, error: message }
@@ -452,10 +473,16 @@ export async function updateRemunerationStatusAction(input: {
         .update({ status })
         .eq("id", remunerationId)
         .select("id")
-        .single()
 
       if (error) return { success: false, error: error.message }
-      return { success: true, data: { id: String((data as any).id) } }
+      if (!data || (data as any[]).length === 0) {
+        return {
+          success: false,
+          error: "Aucune remuneration trouvee pour cette ligne.",
+        }
+      }
+
+      return { success: true, data: { id: String((data as any[])[0].id) } }
     }
 
     const { data, error } = await adminClient
@@ -464,7 +491,6 @@ export async function updateRemunerationStatusAction(input: {
       .eq("collector_id", collectorId)
       .eq("period_month", periodMonth)
       .select("id")
-      .maybeSingle()
 
     if (error) {
       if (/does not exist/i.test(error.message)) {
@@ -476,14 +502,14 @@ export async function updateRemunerationStatusAction(input: {
       return { success: false, error: error.message }
     }
 
-    if (!data) {
+    if (!data || (data as any[]).length === 0) {
       return {
         success: false,
         error: "Aucune remuneration trouvee. Lancez d'abord la creation des remunerations.",
       }
     }
 
-    return { success: true, data: { id: String((data as any).id) } }
+    return { success: true, data: { id: String((data as any[])[0].id) } }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur lors de la mise a jour du statut"
     return { success: false, error: message }
