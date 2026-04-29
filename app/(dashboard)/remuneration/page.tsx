@@ -36,7 +36,7 @@ import { toast } from "sonner"
 
 const statusMap = {
   a_verser: { status: "warning" as const, label: "A verser" },
-  verser: { status: "success" as const, label: "Verser" },
+  verser: { status: "success" as const, label: "Verse" },
 }
 
 function formatFC(value: number) {
@@ -495,10 +495,10 @@ export default function RemunerationPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                disabled={updatingId === row.collectorId || !row.remunerationId}
+                                disabled={updatingId === row.collectorId}
                                 onClick={() => void handleToggleStatus(row.collectorId, row.remunerationId, row.status)}
                               >
-                                {row.status === "verser" ? "Remettre a verser" : "Marquer verser"}
+                                {row.status === "verser" ? "Remettre a verser" : "Marquer verse"}
                               </Button>
                             </div>
                           </TableCell>

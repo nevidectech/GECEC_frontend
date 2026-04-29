@@ -26,6 +26,7 @@ import { StatusBadge } from "@/components/status-badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   ArrowDownToLine,
+  Download,
   ScanBarcode,
   Wifi,
   WifiOff,
@@ -37,6 +38,8 @@ import {
   Calendar as CalendarIcon,
   Calculator,
   Search,
+  FileText,
+  FileSpreadsheet,
 } from "lucide-react"
 import {
   listCollectorsAction,
@@ -45,6 +48,7 @@ import {
   createCollectionDepositAction,
   listCollectionDepositsAction
 } from "@/actions/collection-deposits"
+import { getCollectionReportDataAction } from "@/actions/collection-report"
 import type { Profile } from "@/types/db"
 import { toast } from "sonner"
 
@@ -158,6 +162,229 @@ export default function DepotPage() {
     }
     setSubmitting(false)
   }
+
+  const handleExportDepositsExcel = async () => {
+    if (deposits.length === 0) {
+      toast.error("Aucun dépôt à exporter")
+      return
+    }
+
+    try {
+      const { utils, writeFile } = await import("xlsx")
+      const rows = deposits.map((item) => {
+        const totalFc = item.amount_cotisation + item.amount_carnet + item.amount_duplicate + (item.amount_fiche_retrait || 0)
+        const totalUsd = item.amount_cotisation_usd || 0
+
+        return {
+          Date: new Date(item.deposit_date).toLocaleDateString("fr-FR"),
+          Collecteur: item.collector?.username || item.collector?.email || "Inconnu",
+          "Cotisations FC": item.amount_cotisation,
+          "Cotisations USD": item.amount_cotisation_usd || 0,
+          Carnets: item.amount_carnet,
+          Duplicatas: item.amount_duplicate,
+          "Fiche Retrait": item.amount_fiche_retrait || 0,
+          "Total FC": totalFc,
+          "Total USD": totalUsd,
+          Statut: item.status === "validated" ? "Validé" : "En attente",
+        }
+      })
+
+      const ws = utils.json_to_sheet(rows)
+      const wb = utils.book_new()
+      utils.book_append_sheet(wb, ws, "Depots")
+      writeFile(wb, `depots_${listFilterDate}.xlsx`)
+      toast.success("Export Excel généré")
+    } catch (error) {
+      console.error(error)
+      toast.error("Impossible de générer l'export Excel")
+    }
+  }
+
+  const handleExportDepositsPdf = async () => {
+    if (deposits.length === 0) {
+      toast.error("Aucun dépôt à exporter")
+      return
+    }
+
+    try {
+      const { jsPDF } = await import("jspdf")
+      const autoTable = (await import("jspdf-autotable")).default
+      const doc = new jsPDF({ orientation: "landscape" })
+
+      doc.setFontSize(16)
+      doc.text("LISTE DES DEPOTS", 148, 14, { align: "center" })
+      doc.setFontSize(10)
+      doc.text(`Date filtrée: ${new Date(listFilterDate + "T00:00:00").toLocaleDateString("fr-FR")}`, 14, 22)
+      doc.text(`Généré le: ${new Date().toLocaleString("fr-FR")}`, 14, 28)
+
+      autoTable(doc, {
+        startY: 34,
+        head: [[
+          "Date",
+          "Collecteur",
+          "Cotisations FC",
+          "Cotisations USD",
+          "Carnets",
+          "Duplicatas",
+          "Fiche Retrait",
+          "Total FC",
+          "Total USD",
+          "Statut",
+        ]],
+        body: deposits.map((item) => {
+          const totalFc = item.amount_cotisation + item.amount_carnet + item.amount_duplicate + (item.amount_fiche_retrait || 0)
+          const totalUsd = item.amount_cotisation_usd || 0
+
+          return [
+            new Date(item.deposit_date).toLocaleDateString("fr-FR"),
+            item.collector?.username || item.collector?.email || "Inconnu",
+            `${item.amount_cotisation.toLocaleString()} FC`,
+            `$${totalUsd.toLocaleString()}`,
+            `${item.amount_carnet.toLocaleString()} FC`,
+            `${item.amount_duplicate.toLocaleString()} FC`,
+            `${(item.amount_fiche_retrait || 0).toLocaleString()} FC`,
+            `${totalFc.toLocaleString()} FC`,
+            `$${totalUsd.toLocaleString()}`,
+            item.status === "validated" ? "Validé" : "En attente",
+          ]
+        }),
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [59, 130, 246] },
+      })
+
+      doc.save(`depots_${listFilterDate}.pdf`)
+      toast.success("Export PDF généré")
+    } catch (error) {
+      console.error(error)
+      toast.error("Impossible de générer l'export PDF")
+    }
+  }
+
+  const handleExportPdf = async (item: any) => {
+    try {
+      toast.loading("Génération du PDF...", { id: "pdf-export" })
+      const result = await getCollectionReportDataAction(item.id)
+
+      if (!result.success || !result.data) {
+        toast.error(result.error || "Erreur lors de la récupération des données", { id: "pdf-export" })
+        return
+      }
+
+      const { deposit, cotisations, duplicates, withdrawals } = result.data
+      const collectorName = deposit.collector?.username || deposit.collector?.email || "Inconnu"
+      const dateStr = new Date(deposit.deposit_date).toLocaleDateString("fr-FR")
+
+      const { jsPDF } = await import("jspdf")
+      const autoTable = (await import("jspdf-autotable")).default
+
+      const doc = jsPDF ? new jsPDF() : null
+      if (!doc) throw new Error("Could not initialize jsPDF")
+
+      // Header
+      doc.setFontSize(18)
+      doc.text("RAPPORT DE COLLECTE JOURNALIERE", 105, 15, { align: "center" })
+
+      doc.setFontSize(10)
+      doc.text(`Collecteur: ${collectorName}`, 14, 25)
+      doc.text(`Date: ${dateStr}`, 14, 30)
+      doc.text(`Généré le: ${new Date().toLocaleString("fr-FR")}`, 14, 35)
+
+      let currentY = 45
+
+      // Cotisations Table
+      if (cotisations.length > 0) {
+        doc.setFontSize(12)
+        doc.text("LISTE DES COTISATIONS", 14, currentY)
+        autoTable(doc, {
+          startY: currentY + 5,
+          head: [["Date", "Carnet #", "Client", "Montant", "Devise"]],
+          body: cotisations.map((c: any) => [
+            new Date(c.cotisation_date).toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' }),
+            c.carnet?.number || "N/A",
+            c.carnet?.client_code || "N/A",
+            c.amount.toLocaleString(),
+            c.currency === 2 ? "USD" : "CDF"
+          ]),
+        })
+        currentY = (doc as any).lastAutoTable.finalY + 15
+      }
+
+      // Duplicates Table
+      if (duplicates.length > 0) {
+        if (currentY > 250) { doc.addPage(); currentY = 20; }
+        doc.setFontSize(12)
+        doc.text("LISTE DES DUPLICATAS", 14, currentY)
+        autoTable(doc, {
+          startY: currentY + 5,
+          head: [["Date", "Carnet #", "Client", "Prix"]],
+          body: duplicates.map((d: any) => [
+            new Date(d.created_at).toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' }),
+            d.carnet?.number || "N/A",
+            d.carnet?.client_code || "N/A",
+            d.price.toLocaleString() + " CDF"
+          ]),
+        })
+        currentY = (doc as any).lastAutoTable.finalY + 15
+      }
+
+      // Withdrawals Table
+      if (withdrawals.length > 0) {
+        if (currentY > 250) { doc.addPage(); currentY = 20; }
+        doc.setFontSize(12)
+        doc.text("FICHE DE RETRAIT (DETAILS)", 14, currentY)
+        autoTable(doc, {
+          startY: currentY + 5,
+          head: [["Date", "Carnet #", "Client", "Montant", "Type"]],
+          body: withdrawals.map((w: any) => [
+            new Date(w.withdrawal_date).toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' }),
+            w.carnet?.number || "N/A",
+            w.carnet?.client_code || "N/A",
+            w.amount.toLocaleString(),
+            w.withdrawal_type === 2 ? "Anticipé" : "Normal"
+          ]),
+        })
+        currentY = (doc as any).lastAutoTable.finalY + 15
+      }
+
+      // Totals Summary
+      if (currentY > 220) { doc.addPage(); currentY = 20; }
+      doc.setFontSize(12)
+      doc.text("RESUME DES TOTAUX", 14, currentY)
+      const totalFc = deposit.amount_cotisation + deposit.amount_carnet + deposit.amount_duplicate + (deposit.amount_fiche_retrait || 0)
+      const totalUsd = deposit.amount_cotisation_usd || 0
+
+      autoTable(doc, {
+        startY: currentY + 5,
+        body: [
+          ["Cotisations CDF", `${deposit.amount_cotisation.toLocaleString()} FC`],
+          ["Cotisations USD", `$${deposit.amount_cotisation_usd.toLocaleString()}`],
+          ["Nouveaux Carnets", `${deposit.amount_carnet.toLocaleString()} FC`],
+          ["Duplicatas", `${deposit.amount_duplicate.toLocaleString()} FC`],
+          ["Fiches Retrait", `${(deposit.amount_fiche_retrait || 0).toLocaleString()} FC`],
+          ["TOTAL GENERAL FC", `${totalFc.toLocaleString()} FC`],
+          ["TOTAL GENERAL USD", `$${totalUsd.toLocaleString()}`],
+        ],
+        theme: 'grid',
+        styles: { fontStyle: 'bold' }
+      })
+      currentY = (doc as any).lastAutoTable.finalY + 30
+
+      // Signatures
+      if (currentY > 250) { doc.addPage(); currentY = 40; }
+      doc.setFontSize(10)
+      doc.text("Signature Collecteur", 30, currentY)
+      doc.text("____________________", 20, currentY + 15)
+
+      doc.text("Signature Superviseur", 140, currentY)
+      doc.text("____________________", 130, currentY + 15)
+
+      doc.save(`Rapport_Collecte_${collectorName}_${dateStr.replace(/\//g, '-')}.pdf`)
+      toast.success("PDF généré avec succès", { id: "pdf-export" })
+    } catch (err) {
+      console.error("PDF generation error:", err)
+      toast.error("Erreur lors de la génération du PDF", { id: "pdf-export" })
+    }
+  }
   const totals = deposits.reduce((acc, item) => {
     acc.cdf += (item.amount_cotisation + item.amount_carnet + item.amount_duplicate + (item.amount_fiche_retrait || 0))
     acc.usd += (item.amount_cotisation_usd || 0)
@@ -268,6 +495,26 @@ export default function DepotPage() {
                             onChange={(e) => setListFilterDate(e.target.value)}
                           />
                         </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 h-9"
+                          onClick={handleExportDepositsPdf}
+                          disabled={loadingDeposits || deposits.length === 0}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          PDF
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 h-9"
+                          onClick={handleExportDepositsExcel}
+                          disabled={loadingDeposits || deposits.length === 0}
+                        >
+                          <FileSpreadsheet className="h-3.5 w-3.5" />
+                          Excel
+                        </Button>
                         <Button variant="outline" size="sm" className="gap-1.5 h-9">
                           <Zap className="h-3.5 w-3.5" />
                           Synchroniser
@@ -288,19 +535,20 @@ export default function DepotPage() {
                             <TableHead className="font-semibold text-right">Total FC</TableHead>
                             <TableHead className="font-semibold text-right">Total USD</TableHead>
                             <TableHead className="font-semibold text-center">Statut</TableHead>
+                            <TableHead className="font-semibold text-center">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {loadingDeposits && (
                             <TableRow>
-                              <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                              <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
                                 Chargement des dépôts...
                               </TableCell>
                             </TableRow>
                           )}
                           {!loadingDeposits && deposits.length === 0 && (
                             <TableRow>
-                              <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                              <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
                                 Aucun dépôt enregistré pour cette date.
                               </TableCell>
                             </TableRow>
@@ -336,6 +584,16 @@ export default function DepotPage() {
                                     status={item.status === 'validated' ? 'success' : 'pending'}
                                     label={item.status === 'validated' ? 'Validé' : 'En attente'}
                                   />
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-primary"
+                                    onClick={() => handleExportPdf(item)}
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                  </Button>
                                 </TableCell>
                               </TableRow>
                             );
