@@ -48,16 +48,29 @@ export function LoginForm() {
         setIsLoading(true);
         try {
             const supabase = createClient();
-            const { error } = await supabase.auth.signInWithPassword({
+            const { data, error } = await supabase.auth.signInWithPassword({
                 email: values.email,
                 password: values.password,
             });
 
-            if (!error) {
+            if (!error && data.user) {
+                // Verify user role
+                const { data: profile } = await supabase
+                    .from("user_profile")
+                    .select("function")
+                    .eq("user_id", data.user.id)
+                    .single();
+
+                if (profile?.function === "collector") {
+                    await supabase.auth.signOut();
+                    toast.error("Accès refusé : les collecteurs ne peuvent pas accéder à l'interface web.");
+                    return;
+                }
+
                 toast.success("Connexion réussie !");
                 router.push("/dashboard");
                 router.refresh();
-            } else {
+            } else if (error) {
                 toast.error(error.message || "Identifiants incorrects.");
             }
         } catch (error) {
