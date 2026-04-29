@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import React from "react"
 import Link from "next/link"
+import * as XLSX from "xlsx"
 import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -86,6 +87,78 @@ export default function ClientsPage() {
   const [pageSize] = useState(10)
   const [totalCount, setTotalCount] = useState(0)
   const [stats, setStats] = useState({ active: 0, inactive: 0, total: 0 })
+  const [isExporting, setIsExporting] = useState(false)
+
+  const handleExport = async () => {
+    try {
+      setIsExporting(true)
+      const searchFilter = search
+        ? `first_name.ilike.%${search}%,last_name.ilike.%${search}%,code.ilike.%${search}%,phone.ilike.%${search}%`
+        : null
+
+      let clientQuery = supabase.from("client").select("*").is("deleted_at", null)
+      if (searchFilter) {
+        clientQuery = clientQuery.or(searchFilter)
+      }
+
+      const { data: clientsData, error: clientsError } = await clientQuery.order("created_at", { ascending: false })
+      if (clientsError) throw clientsError
+
+      const { data: zonesData } = await supabase.from("zone").select("id, name")
+      const zoneMap = new Map((zonesData ?? []).map((zone) => [zone.id, zone.name]))
+
+      const clientCodes = (clientsData ?? []).map((c: any) => c.code)
+      
+      let carnets: Pick<Carnet, "client_code" | "initial_amount" | "currency">[] = []
+      if (clientCodes.length > 0) {
+        // Fetch carnets in chunks if necessary, but for now just one query
+        const { data: carnetsData } = await supabase
+          .from("carnet")
+          .select("client_code, initial_amount, currency")
+          .in("client_code", clientCodes)
+        if (carnetsData) {
+          carnets = carnetsData as Pick<Carnet, "client_code" | "initial_amount" | "currency">[]
+        }
+      }
+
+      const exportData = ((clientsData ?? []) as Client[]).map((client) => {
+        const name = `${client.first_name} ${client.last_name}`.trim()
+        const clientCarnets = carnets.filter((carnet) => carnet.client_code === client.code)
+        
+        const totalByCurrency = new Map<number, number>()
+        clientCarnets.forEach((carnet) => {
+          const current = totalByCurrency.get(carnet.currency) ?? 0
+          totalByCurrency.set(carnet.currency, current + Number(carnet.initial_amount ?? 0))
+        })
+
+        const primaryCurrency = totalByCurrency.keys().next().value ?? 1
+        const primaryTotal = totalByCurrency.get(primaryCurrency) ?? 0
+        const status = client.status === 1 ? "Actif" : client.status === 0 ? "Inactif" : "Suspendu"
+        const since = client.created_at ? new Date(client.created_at).toLocaleDateString() : "-"
+
+        return {
+          "Nom complet": name,
+          "Code": client.code,
+          "Téléphone": client.phone,
+          "Zone": zoneMap.get(client.zone_id) ?? "-",
+          "Nombre de carnets": clientCarnets.length,
+          "Épargne totale": formatMoney(primaryTotal, primaryCurrency),
+          "Statut": status,
+          "Inscrit le": since,
+        }
+      })
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData)
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Clients")
+      XLSX.writeFile(workbook, "Export_Clients.xlsx")
+    } catch (err) {
+      console.error("Erreur lors de l'export", err)
+      alert("Une erreur est survenue lors de l'exportation.")
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   useEffect(() => {
     async function fetchGlobalStats() {
@@ -147,13 +220,13 @@ export default function ClientsPage() {
       }
 
       // Fetch related data for the page
-      const clientCodes = (clientsData ?? []).map((c) => c.code)
+      const clientCodes = (clientsData ?? []).map((c: any) => c.code)
       const { data: carnetsData, error: carnetsError } = await supabase
         .from("carnet")
         .select("client_code, initial_amount, currency")
         .in("client_code", clientCodes)
       if (carnetsError) setFetchError(carnetsError.message) // non-fatal
-      const carnets = (carnetsData ?? []) as Pick<Carnet, "client_code", "initial_amount", "currency">[]
+      const carnets = (carnetsData ?? []) as Pick<Carnet, "client_code" | "initial_amount" | "currency">[]
 
       const mapped = ((clientsData ?? []) as Client[]).map((client) => {
         const name = `${client.first_name} ${client.last_name}`.trim()
@@ -252,9 +325,15 @@ export default function ClientsPage() {
                     className="pl-9 w-72 h-9"
                   />
                 </div>
-                <Button variant="outline" size="sm" className="h-9 gap-1.5">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-9 gap-1.5" 
+                  onClick={handleExport}
+                  disabled={isExporting}
+                >
                   <Download className="h-3.5 w-3.5" />
-                  Export
+                  {isExporting ? "Export en cours..." : "Export"}
                 </Button>
               </div>
             </div>

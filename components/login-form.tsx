@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { login } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/client";
 
 const formSchema = z.object({
     email: z.string().email({
@@ -47,21 +47,26 @@ export function LoginForm() {
     async function onSubmit(values: z.infer<typeof formSchema>) {
         setIsLoading(true);
         try {
-            const formData = new FormData();
-            formData.append("email", values.email);
-            formData.append("password", values.password);
+            const supabase = createClient();
+            const { error } = await supabase.auth.signInWithPassword({
+                email: values.email,
+                password: values.password,
+            });
 
-            const result = await login(formData);
-
-            if (result.success) {
+            if (!error) {
                 toast.success("Connexion réussie !");
                 router.push("/dashboard");
                 router.refresh();
             } else {
-                toast.error(result.error || "Identifiants incorrects.");
+                toast.error(error.message || "Identifiants incorrects.");
             }
         } catch (error) {
-            toast.error("Une erreur est survenue lors de la connexion.");
+            const message = error instanceof Error ? error.message : "Une erreur est survenue lors de la connexion.";
+            toast.error(
+                message.includes("ENOTFOUND") || message.includes("fetch") || message.includes("network")
+                    ? "Impossible de joindre Supabase. Vérifiez NEXT_PUBLIC_SUPABASE_URL dans .env."
+                    : message,
+            );
         } finally {
             setIsLoading(false);
         }
