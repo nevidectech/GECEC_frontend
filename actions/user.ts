@@ -10,6 +10,7 @@ export type CurrentUser = {
     username: string
     initials: string
     email: string | null
+    function: string | null
     role: string
     zone: string | null
     avatarUrl: string | null
@@ -69,6 +70,7 @@ export async function getCurrentUserAction(): Promise<ActionResult<CurrentUser>>
                     username: name,
                     initials: name.substring(0, 2).toUpperCase(),
                     email,
+                    function: null,
                     role: "Utilisateur",
                     zone: null,
                     avatarUrl: null,
@@ -90,10 +92,8 @@ export async function getCurrentUserAction(): Promise<ActionResult<CurrentUser>>
         const username = profile.username ?? user.email?.split("@")[0] ?? "Utilisateur"
         const roleLabels: Record<string, string> = {
             admin: "Administrateur",
-            manager: "Gestionnaire",
-            collecteur: "Collecteur",
-            caissier: "Caissier",
             superviseur: "Superviseur",
+            caissiere: "Caissiere",
         }
 
         return {
@@ -103,6 +103,7 @@ export async function getCurrentUserAction(): Promise<ActionResult<CurrentUser>>
                 username,
                 initials: username.substring(0, 2).toUpperCase(),
                 email: profile.email ?? user.email ?? null,
+                function: profile.function ?? null,
                 role: roleLabels[profile.function ?? ""] ?? profile.function ?? "Utilisateur",
                 zone: zoneName,
                 avatarUrl: profile.avatar_url ?? null,
@@ -143,14 +144,10 @@ export async function getCurrentUserProfileAction(): Promise<ActionResult<UserPr
         const username = profile?.username ?? user.user_metadata?.username ?? user.email?.split("@")[0] ?? "Utilisateur"
         const roleLabels: Record<string, string> = {
             admin: "Administrateur",
-            manager: "Gestionnaire",
-            collecteur: "Collecteur",
-            collector: "Collecteur",
-            caissier: "Caissier",
             superviseur: "Superviseur",
-            other: "Utilisateur",
+            caissiere: "Caissiere",
         }
-        const rawRole = profile?.function ?? (user.app_metadata?.function as string | undefined) ?? "other"
+        const rawRole = profile?.function ?? (user.app_metadata?.function as string | undefined) ?? "admin"
 
         return {
             success: true,
@@ -236,7 +233,7 @@ export async function updateCurrentUserProfileAction(
                     email,
                     phone,
                     avatar_url: avatarUrl,
-                    function: "other",
+                    function: "admin",
                 })
 
             if (insertError) {

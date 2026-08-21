@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const webBlockedRoles = ["collector"]
+
 export async function proxy(request: NextRequest) {
     let supabaseResponse = NextResponse.next({
         request,
@@ -27,21 +29,21 @@ export async function proxy(request: NextRequest) {
         }
     )
 
-    // IMPORTANT: Avoid writing any logic between createServerClient and
-    // getUser(). A simple mistake could make it very hard to debug
-    // issue with deep-linked URLs or navigation.
-
     const {
         data: { user },
+        error: getUserError,
     } = await supabase.auth.getUser()
 
+    const isBanned = getUserError?.message?.includes("banned") ?? false
+    const userRole = (user?.app_metadata?.function as string) ?? ""
+    const isWebBlocked = webBlockedRoles.includes(userRole)
+
     if (
-        !user &&
+        (!user || isBanned || isWebBlocked) &&
         !request.nextUrl.pathname.startsWith('/login') &&
         !request.nextUrl.pathname.startsWith('/auth') &&
         request.nextUrl.pathname !== '/'
     ) {
-        // no user, potentially respond by redirecting the user to the login page
         const url = request.nextUrl.clone()
         url.pathname = '/login'
         return NextResponse.redirect(url)
@@ -52,13 +54,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
     matcher: [
-        /*
-         * Match all request paths except for the ones starting with:
-         * - _next/static (static files)
-         * - _next/image (image optimization files)
-         * - favicon.ico (favicon file)
-         * Feel free to modify this pattern to include more paths.
-         */
         '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
     ],
 }
