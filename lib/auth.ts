@@ -1,6 +1,5 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
 
@@ -14,13 +13,24 @@ export async function login(formData: FormData) {
 
     const supabase = await createClient();
 
-    const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-    });
+    try {
+        const { error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
 
-    if (error) {
-        return { success: false, error: error.message };
+        if (error) {
+            return { success: false, error: error.message };
+        }
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Impossible de joindre Supabase."
+        return {
+            success: false,
+            error:
+                message.includes("ENOTFOUND") || message.includes("fetch") || message.includes("network")
+                    ? "Impossible de joindre Supabase. Vérifiez NEXT_PUBLIC_SUPABASE_URL dans .env."
+                    : message,
+        };
     }
 
     return { success: true };

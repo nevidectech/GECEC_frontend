@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { login } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/client";
 
 const formSchema = z.object({
     email: z.string().email({
@@ -47,21 +47,39 @@ export function LoginForm() {
     async function onSubmit(values: z.infer<typeof formSchema>) {
         setIsLoading(true);
         try {
-            const formData = new FormData();
-            formData.append("email", values.email);
-            formData.append("password", values.password);
+            const supabase = createClient();
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: values.email,
+                password: values.password,
+            });
 
-            const result = await login(formData);
+            if (!error && data.user) {
+                // Verify user role
+                const { data: profile } = await supabase
+                    .from("user_profile")
+                    .select("function")
+                    .eq("user_id", data.user.id)
+                    .single();
 
-            if (result.success) {
+                if (profile?.function === "collector") {
+                    await supabase.auth.signOut();
+                    toast.error("Accès refusé : les collecteurs ne peuvent pas accéder à l'interface web.");
+                    return;
+                }
+
                 toast.success("Connexion réussie !");
                 router.push("/dashboard");
                 router.refresh();
-            } else {
-                toast.error(result.error || "Identifiants incorrects.");
+            } else if (error) {
+                toast.error(error.message || "Identifiants incorrects.");
             }
         } catch (error) {
-            toast.error("Une erreur est survenue lors de la connexion.");
+            const message = error instanceof Error ? error.message : "Une erreur est survenue lors de la connexion.";
+            toast.error(
+                message.includes("ENOTFOUND") || message.includes("fetch") || message.includes("network")
+                    ? "Impossible de joindre Supabase. Vérifiez NEXT_PUBLIC_SUPABASE_URL dans .env."
+                    : message,
+            );
         } finally {
             setIsLoading(false);
         }
