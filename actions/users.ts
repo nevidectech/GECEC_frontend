@@ -11,7 +11,7 @@ type ActionResult<T> = {
   error?: string
 }
 
-const roleSchema = z.enum(["admin", "collector", "other"])
+const roleSchema = z.enum(["admin", "superviseur", "caissiere", "collector"])
 
 const createUserSchema = z.object({
   fullName: z.string().trim().min(2, "Le nom complet est requis"),
@@ -42,10 +42,10 @@ const updateUserSchema = z.object({
     .or(z.literal("")),
 })
 
-const roleValues: ProfileRole[] = ["admin", "collector", "other"]
+const roleValues: ProfileRole[] = ["admin", "superviseur", "caissiere", "collector"]
 
 function normalizeRole(value: unknown): ProfileRole {
-  return roleValues.includes(value as ProfileRole) ? (value as ProfileRole) : "other"
+  return roleValues.includes(value as ProfileRole) ? (value as ProfileRole) : "admin"
 }
 
 function mapAuthUserToProfile(user: {
@@ -54,9 +54,11 @@ function mapAuthUserToProfile(user: {
   created_at?: string
   user_metadata?: Record<string, unknown> | null
   app_metadata?: Record<string, unknown> | null
+  banned_until?: string | null
 }): Profile {
   const metadataUsername = user.user_metadata?.username as string | undefined
   const derivedUsername = user.email?.split("@")[0] ?? null
+  const isActive = !user.banned_until || new Date(user.banned_until) < new Date()
 
   return {
     id: user.id,
@@ -68,6 +70,7 @@ function mapAuthUserToProfile(user: {
     username: metadataUsername ?? derivedUsername,
     email: user.email ?? null,
     function: normalizeRole(user.app_metadata?.function),
+    is_active: isActive,
     created_at: user.created_at ?? null,
   }
 }
@@ -97,11 +100,30 @@ export async function listUsersAction(): Promise<ActionResult<Profile[]>> {
       return { success: false, error: error.message }
     }
 
+    const authProfiles = (data.users ?? []).map((user) => mapAuthUserToProfile(user))
+
+    const { data: dbProfiles } = await adminClient
+      .from("user_profile")
+      .select("user_id, phone, zone_id, avatar_url, username, email")
+
+    const profileByUserId = new Map((dbProfiles ?? []).map((p) => [p.user_id, p]))
+
+    const merged = authProfiles.map((authProfile) => {
+      const dbProfile = profileByUserId.get(authProfile.user_id)
+      if (!dbProfile) return authProfile
+      return {
+        ...authProfile,
+        phone: dbProfile.phone ?? authProfile.phone,
+        zone_id: dbProfile.zone_id ?? authProfile.zone_id,
+        avatar_url: dbProfile.avatar_url ?? authProfile.avatar_url,
+        username: dbProfile.username ?? authProfile.username,
+        email: dbProfile.email ?? authProfile.email,
+      }
+    })
+
     return {
       success: true,
-      data: (data.users ?? [])
-        .map((user) => mapAuthUserToProfile(user))
-        .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? "")),
+      data: merged.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? "")),
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur inattendue"
@@ -170,6 +192,28 @@ export async function updateUserRoleAction(
     }
 
     return { success: true, data: { id: payload.id, role: payload.role } }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erreur inattendue"
+    return { success: false, error: message }
+  }
+}
+
+export async function toggleUserActiveAction(
+  input: { userId: string; active: boolean },
+): Promise<ActionResult<{ id: string; active: boolean }>> {
+  try {
+    await assertAdmin()
+    const adminClient = createAdminClient()
+
+    const { error } = await adminClient.auth.admin.updateUserById(input.userId, {
+      ban_duration: input.active ? "none" : "100y",
+    })
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    return { success: true, data: { id: input.userId, active: input.active } }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur inattendue"
     return { success: false, error: message }

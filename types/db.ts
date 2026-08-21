@@ -1,4 +1,4 @@
-export type ProfileRole = "admin" | "collector" | "other"
+export type ProfileRole = "admin" | "superviseur" | "caissiere" | "collector"
 
 export interface Database {
   public: {
@@ -376,6 +376,7 @@ export interface Database {
           updated_at: string | null
           username: string | null
           email: string | null
+          is_active: boolean
         }
         Insert: {
           id?: string
@@ -388,6 +389,7 @@ export interface Database {
           updated_at?: string | null
           username?: string | null
           email?: string | null
+          is_active?: boolean
         }
         Update: {
           user_id?: string
@@ -399,6 +401,7 @@ export interface Database {
           updated_at?: string | null
           username?: string | null
           email?: string | null
+          is_active?: boolean
         }
         Relationships: []
       }

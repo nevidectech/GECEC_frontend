@@ -35,29 +35,35 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import type { CurrentUser } from "@/actions/user"
 import { useLogout } from "@/hooks/useLogout"
 
-const mainNav = [
-  { title: "Tableau de bord", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Carnets", href: "/carnets", icon: BookOpen },
-  { title: "Clients", href: "/clients", icon: Users },
+const allMainNav = [
+  { title: "Tableau de bord", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "superviseur", "caissiere"] },
+  { title: "Carnets", href: "/carnets", icon: BookOpen, roles: ["admin", "superviseur", "caissiere"] },
+  { title: "Clients", href: "/clients", icon: Users, roles: ["admin", "superviseur", "caissiere"] },
 ]
 
-const operationsNav = [
-  { title: "Retraits", href: "/retraits", icon: ArrowUpFromLine },
-  { title: "Depot & Collecte", href: "/depot", icon: ArrowDownToLine },
-  { title: "Cotisations", href: "/cotisations", icon: ListChecks },
-  { title: "Remuneration", href: "/remuneration", icon: Coins },
+const allOperationsNav = [
+  { title: "Retraits", href: "/retraits", icon: ArrowUpFromLine, roles: ["admin", "caissiere"] },
+  { title: "Depot & Collecte", href: "/depot", icon: ArrowDownToLine, roles: ["admin", "superviseur"] },
+  { title: "Cotisations", href: "/cotisations", icon: ListChecks, roles: ["admin", "caissiere"] },
+  { title: "Remuneration", href: "/remuneration", icon: Coins, roles: ["admin", "caissiere"] },
 ]
 
-const systemNav = [
-  { title: "Historique", href: "/historique", icon: History },
-  { title: "Rapports", href: "/rapports", icon: BarChart3 },
-  { title: "Finance", href: "/finance", icon: BadgeDollarSign },
-  { title: "Parametrage", href: "/parametrage", icon: Settings },
+const allSystemNav = [
+  { title: "Historique", href: "/historique", icon: History, roles: ["admin"] },
+  { title: "Rapports", href: "/rapports", icon: BarChart3, roles: ["admin", "caissiere"] },
+  { title: "Finance", href: "/finance", icon: BadgeDollarSign, roles: ["admin", "caissiere"] },
+  { title: "Parametrage", href: "/parametrage", icon: Settings, roles: ["admin"] },
 ]
 
 export function AppSidebar({ user }: { user: CurrentUser | null }) {
   const pathname = usePathname()
   const { logout, isPending } = useLogout()
+
+  const userRole = user?.function ?? "admin"
+
+  const mainNav = allMainNav.filter((item) => item.roles.includes(userRole))
+  const operationsNav = allOperationsNav.filter((item) => item.roles.includes(userRole))
+  const systemNav = allSystemNav.filter((item) => item.roles.includes(userRole))
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard"

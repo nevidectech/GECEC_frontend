@@ -1,12 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import type { Profile, ProfileRole } from "@/types/db"
-import { createClient } from "@/lib/supabase/client"
 import {
+  listUsersAction,
   createUserWithProfileAction,
   updateUserDetailsAction,
   updateUserRoleAction,
+  toggleUserActiveAction,
 } from "@/actions/users"
 
 type CreateUserInput = {
@@ -29,7 +30,6 @@ type UpdateUserInput = {
 }
 
 export function useUsers() {
-  const supabase = useMemo(() => createClient(), [])
   const [users, setUsers] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -38,20 +38,16 @@ export function useUsers() {
     setLoading(true)
     setError(null)
 
-    const { data, error: fetchError } = await supabase
-      .from("user_profile")
-      .select("*")
-      .order("created_at", { ascending: false })
-
-    if (fetchError) {
+    const result = await listUsersAction()
+    if (!result.success) {
       setUsers([])
-      setError(fetchError.message)
+      setError(result.error ?? "Erreur de chargement")
     } else {
-      setUsers((data ?? []) as Profile[])
+      setUsers(result.data ?? [])
     }
 
     setLoading(false)
-  }, [supabase])
+  }, [])
 
   const createUser = useCallback(
     async (payload: CreateUserInput) => {
@@ -100,6 +96,27 @@ export function useUsers() {
     [refetch],
   )
 
+  const toggleUserActive = useCallback(
+    async (userId: string, active: boolean) => {
+      const previousUsers = users
+      setUsers((current) =>
+        current.map((user) =>
+          user.user_id === userId ? { ...user, is_active: active } : user,
+        ),
+      )
+
+      const result = await toggleUserActiveAction({ userId, active })
+      if (!result.success) {
+        setUsers(previousUsers)
+        setError(result.error ?? "Impossible de modifier le statut")
+        return result
+      }
+
+      return result
+    },
+    [users],
+  )
+
   useEffect(() => {
     void refetch()
   }, [refetch])
@@ -111,6 +128,7 @@ export function useUsers() {
     createUser,
     updateUserRole,
     updateUserDetails,
+    toggleUserActive,
     refetch,
   }
 }

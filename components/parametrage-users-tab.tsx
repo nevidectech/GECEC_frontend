@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Plus, Shield, Loader2, Edit, KeyRound } from "lucide-react"
+import { Plus, Shield, Loader2, Edit, KeyRound, Power, PowerOff } from "lucide-react"
 import { toast } from "sonner"
 import { useUsers } from "@/hooks/useUsers"
 import { useZones } from "@/hooks/useZones"
@@ -67,7 +67,7 @@ const defaultForm: FormState = {
   username: "",
   email: "",
   password: "",
-  role: "collector",
+  role: "caissiere",
 }
 
 function getInitials(user: Profile) {
@@ -82,14 +82,19 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat("fr-FR").format(new Date(value))
 }
 
-const roleMeta: Record<ProfileRole, { label: string; variant: "default" | "secondary" | "outline" }> = {
+const roleMeta: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
   admin: { label: "Admin", variant: "default" },
-  collector: { label: "Collector", variant: "secondary" },
-  other: { label: "Other", variant: "outline" },
+  superviseur: { label: "Superviseur", variant: "secondary" },
+  caissiere: { label: "Caissiere", variant: "outline" },
+  collector: { label: "Collecteur", variant: "secondary" },
+}
+
+function getRoleMeta(role: string | null) {
+  return roleMeta[role ?? "admin"] ?? { label: role ?? "Inconnu", variant: "outline" as const }
 }
 
 export function ParametrageUsersTab() {
-  const { users, loading, error, createUser, updateUserRole, updateUserDetails } = useUsers()
+  const { users, loading, error, createUser, updateUserRole, updateUserDetails, toggleUserActive } = useUsers()
   const { zones } = useZones()
   const [open, setOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -101,15 +106,19 @@ export function ParametrageUsersTab() {
 
   const usersCountLabel = useMemo(() => `${users.length} utilisateur(s)`, [users.length])
   const adminsCount = useMemo(
-    () => users.filter((user) => (user.function ?? "other") === "admin").length,
+    () => users.filter((user) => (user.function ?? "admin") === "admin").length,
+    [users],
+  )
+  const superviseursCount = useMemo(
+    () => users.filter((user) => (user.function ?? "admin") === "superviseur").length,
+    [users],
+  )
+  const caissieresCount = useMemo(
+    () => users.filter((user) => (user.function ?? "admin") === "caissiere").length,
     [users],
   )
   const collectorsCount = useMemo(
-    () => users.filter((user) => (user.function ?? "other") === "collector").length,
-    [users],
-  )
-  const othersCount = useMemo(
-    () => users.filter((user) => (user.function ?? "other") === "other").length,
+    () => users.filter((user) => (user.function ?? "admin") === "collector").length,
     [users],
   )
   const zoneNameById = useMemo(
@@ -144,6 +153,18 @@ export function ParametrageUsersTab() {
       toast.error(result.error ?? "Impossible de modifier le role")
     } else {
       toast.success("Role mis a jour")
+    }
+    setBusyUserId(null)
+  }
+
+  async function handleToggleActive(user: Profile) {
+    setBusyUserId(user.user_id)
+    const newActive = !(user.is_active ?? true)
+    const result = await toggleUserActive(user.user_id, newActive)
+    if (!result.success) {
+      toast.error(result.error ?? "Impossible de modifier le statut")
+    } else {
+      toast.success(newActive ? "Utilisateur active" : "Utilisateur desactive")
     }
     setBusyUserId(null)
   }
@@ -286,8 +307,9 @@ export function ParametrageUsersTab() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="collector">Collector</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="superviseur">Superviseur</SelectItem>
+                      <SelectItem value="caissiere">Caissiere</SelectItem>
+                      <SelectItem value="collector">Collecteur</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -308,18 +330,22 @@ export function ParametrageUsersTab() {
       </CardHeader>
 
       <CardContent>
-        <div className="grid gap-3 pb-4 md:grid-cols-3">
+        <div className="grid gap-3 pb-4 md:grid-cols-4">
           <div className="rounded-lg border bg-card p-3">
             <p className="text-xs text-muted-foreground">Administrateurs</p>
             <p className="text-lg font-semibold text-foreground">{adminsCount}</p>
           </div>
           <div className="rounded-lg border bg-card p-3">
-            <p className="text-xs text-muted-foreground">Collectors</p>
-            <p className="text-lg font-semibold text-foreground">{collectorsCount}</p>
+            <p className="text-xs text-muted-foreground">Superviseurs</p>
+            <p className="text-lg font-semibold text-foreground">{superviseursCount}</p>
           </div>
           <div className="rounded-lg border bg-card p-3">
-            <p className="text-xs text-muted-foreground">Autres roles</p>
-            <p className="text-lg font-semibold text-foreground">{othersCount}</p>
+            <p className="text-xs text-muted-foreground">Caissieres</p>
+            <p className="text-lg font-semibold text-foreground">{caissieresCount}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-xs text-muted-foreground">Collecteurs</p>
+            <p className="text-lg font-semibold text-foreground">{collectorsCount}</p>
           </div>
         </div>
 
@@ -331,8 +357,8 @@ export function ParametrageUsersTab() {
                 <TableHead className="font-semibold">Contact</TableHead>
                 <TableHead className="font-semibold">Zone</TableHead>
                 <TableHead className="font-semibold">Role</TableHead>
+                <TableHead className="font-semibold">Statut</TableHead>
                 <TableHead className="font-semibold">Cree le</TableHead>
-                <TableHead className="font-semibold">ID auth</TableHead>
                 <TableHead className="font-semibold text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -389,7 +415,7 @@ export function ParametrageUsersTab() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Select
-                          value={user.function ?? "other"}
+                          value={user.function ?? "admin"}
                           onValueChange={(value) => handleRoleChange(user.id, value as ProfileRole)}
                           disabled={busyUserId === user.id}
                         >
@@ -398,12 +424,13 @@ export function ParametrageUsersTab() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="admin">Admin</SelectItem>
-                            <SelectItem value="collector">Collector</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="superviseur">Superviseur</SelectItem>
+                            <SelectItem value="caissiere">Caissiere</SelectItem>
+                            <SelectItem value="collector">Collecteur</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Badge variant={roleMeta[user.function ?? "other"].variant}>
-                          {roleMeta[user.function ?? "other"].label}
+                        <Badge variant={getRoleMeta(user.function).variant}>
+                          {getRoleMeta(user.function).label}
                         </Badge>
                         {user.function === "admin" && (
                           <Shield className="h-3.5 w-3.5 text-primary" />
@@ -411,24 +438,44 @@ export function ParametrageUsersTab() {
                       </div>
                     </TableCell>
 
+                    <TableCell>
+                      <Badge variant={user.is_active !== false ? "default" : "destructive"}>
+                        {user.is_active !== false ? "Actif" : "Inactif"}
+                      </Badge>
+                    </TableCell>
+
                     <TableCell className="text-muted-foreground">
                       {formatDate(user.created_at)}
                     </TableCell>
 
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {user.user_id}
-                    </TableCell>
-
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 gap-1.5"
-                        onClick={() => openEditDialog(user)}
-                      >
-                        <Edit className="h-3.5 w-3.5" />
-                        Modifier
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 gap-1.5"
+                          onClick={() => openEditDialog(user)}
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                          Modifier
+                        </Button>
+                        <Button
+                          variant={user.is_active !== false ? "destructive" : "default"}
+                          size="sm"
+                          className="h-8 gap-1.5"
+                          onClick={() => handleToggleActive(user)}
+                          disabled={busyUserId === user.user_id}
+                        >
+                          {busyUserId === user.user_id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : user.is_active !== false ? (
+                            <PowerOff className="h-3.5 w-3.5" />
+                          ) : (
+                            <Power className="h-3.5 w-3.5" />
+                          )}
+                          {user.is_active !== false ? "Desactiver" : "Activer"}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -538,8 +585,9 @@ export function ParametrageUsersTab() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="collector">Collector</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
+                        <SelectItem value="superviseur">Superviseur</SelectItem>
+                        <SelectItem value="caissiere">Caissiere</SelectItem>
+                        <SelectItem value="collector">Collecteur</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
