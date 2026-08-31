@@ -142,7 +142,8 @@ async function computeRemunerationBase(periodMonth?: string): Promise<Remunerati
     adminClient
       .from("user_profile")
       .select("user_id, username, email")
-      .in("function", ["collector", "collecteur"]),
+      .in("function", ["collector", "collecteur"])
+      .eq("is_active", true),
     adminClient
       .from("carnet")
       .select("id, initial_amount, currency, created_at, created_by")
@@ -186,7 +187,11 @@ async function computeRemunerationBase(periodMonth?: string): Promise<Remunerati
     collectorsAgg.set(collectorId, current)
   }
 
-  const collectorsRows = Array.from(collectorsAgg.entries()).map(([collectorId, value]) => ({
+  const activeCollectorIds = new Set(collectorsMap.keys())
+
+  const collectorsRows = Array.from(collectorsAgg.entries())
+    .filter(([collectorId]) => activeCollectorIds.has(collectorId))
+    .map(([collectorId, value]) => ({
     collectorId,
     collectorName: collectorsMap.get(collectorId) ?? collectorId,
     carnetCount: value.carnetCount,
