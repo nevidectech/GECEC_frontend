@@ -135,7 +135,7 @@ async function computeRemunerationBase(periodMonth?: string): Promise<Remunerati
   const { monthDate, year, month, normalized } = normalizePeriodMonth(periodMonth)
 
   const endCurrentMonth = lastDay(year, month)
-  const startPreviousMonth = firstDay(year, month - 1)
+  const startCurrentMonth = firstDay(year, month)
 
   const [ratePercent, collectorsRes, carnetsRes] = await Promise.all([
     resolveRatePercent(adminClient),
@@ -147,7 +147,7 @@ async function computeRemunerationBase(periodMonth?: string): Promise<Remunerati
     adminClient
       .from("carnet")
       .select("id, initial_amount, currency, created_at, created_by")
-      .gte("created_at", startPreviousMonth.toISOString())
+      .gte("created_at", startCurrentMonth.toISOString())
       .lte("created_at", endCurrentMonth.toISOString())
       .eq("is_archived", false),
   ])
@@ -531,14 +531,14 @@ export async function getCollectorCarnetRemunerationDetailsAction(input: {
     const ratePercent = await resolveRatePercent(adminClient)
 
     const { year, month } = normalizePeriodMonth(input.periodMonth)
-    const startPreviousMonth = firstDay(year, month - 1)
+    const startCurrentMonth = firstDay(year, month)
     const endCurrentMonth = lastDay(year, month)
 
     const { data, error } = await adminClient
       .from("carnet")
       .select("id, number, client_code, created_at, initial_amount, currency")
       .eq("created_by", input.collectorId)
-      .gte("created_at", startPreviousMonth.toISOString())
+      .gte("created_at", startCurrentMonth.toISOString())
       .lte("created_at", endCurrentMonth.toISOString())
       .eq("is_archived", false)
       .order("created_at", { ascending: false })
