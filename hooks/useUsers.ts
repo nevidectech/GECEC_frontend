@@ -64,13 +64,13 @@ export function useUsers() {
   )
 
   const updateUserRole = useCallback(
-    async (id: string, role: ProfileRole) => {
+    async (userId: string, role: ProfileRole) => {
       const previousUsers = users
       setUsers((current) =>
-        current.map((user) => (user.id === id ? { ...user, function: role } : user)),
+        current.map((user) => (user.user_id === userId ? { ...user, function: role } : user)),
       )
 
-      const result = await updateUserRoleAction({ id, role })
+      const result = await updateUserRoleAction({ userId, role })
       if (!result.success) {
         setUsers(previousUsers)
         setError(result.error ?? "Impossible de modifier le role")

@@ -22,7 +22,7 @@ const createUserSchema = z.object({
 })
 
 const updateRoleSchema = z.object({
-  id: z.string().uuid("ID utilisateur invalide"),
+  userId: z.string().uuid("ID utilisateur invalide"),
   role: roleSchema,
 })
 
@@ -182,16 +182,24 @@ export async function updateUserRoleAction(
     const payload = updateRoleSchema.parse(input)
     const adminClient = createAdminClient()
 
-    const { error } = await adminClient
-      .from("user_profile")
-      .update({ function: payload.role })
-      .eq("id", payload.id)
+    const { error: authError } = await adminClient.auth.admin.updateUserById(payload.userId, {
+      app_metadata: { function: payload.role },
+    })
 
-    if (error) {
-      return { success: false, error: error.message }
+    if (authError) {
+      return { success: false, error: authError.message }
     }
 
-    return { success: true, data: { id: payload.id, role: payload.role } }
+    const { error: profileError } = await adminClient
+      .from("user_profile")
+      .update({ function: payload.role })
+      .eq("user_id", payload.userId)
+
+    if (profileError) {
+      return { success: false, error: profileError.message }
+    }
+
+    return { success: true, data: { id: payload.userId, role: payload.role } }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur inattendue"
     return { success: false, error: message }
@@ -206,7 +214,8 @@ export async function toggleUserActiveAction(
     const adminClient = createAdminClient()
 
     const { error } = await adminClient.auth.admin.updateUserById(input.userId, {
-      ban_duration: input.active ? "none" : "100y",
+      // Supabase expects a Go duration; years are not a supported unit.
+      ban_duration: input.active ? "none" : "876000h",
     })
 
     if (error) {
@@ -250,13 +259,13 @@ export async function updateUserDetailsAction(
         zone_id: payload.zoneId ?? null,
         function: payload.role,
       })
-      .eq("id", payload.id)
+      .eq("user_id", payload.userId)
 
     if (profileError) {
       return { success: false, error: profileError.message }
     }
 
-    return { success: true, data: { id: payload.id } }
+    return { success: true, data: { id: payload.userId } }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur inattendue"
     return { success: false, error: message }
