@@ -77,21 +77,26 @@ function parsePercent(raw: string | null | undefined): number | null {
   return value
 }
 
-function firstDay(year: number, month: number) {
-  return new Date(Date.UTC(year, month, 1, 0, 0, 0, 0))
-}
-
-function lastDay(year: number, month: number) {
-  return new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999))
-}
-
 function monthLabel(date: Date) {
   return date.toLocaleDateString("fr-FR", { month: "short", year: "2-digit" })
 }
 
+function periodMonthToCarnetMonth(periodMonth: string): string {
+  const [year, month] = periodMonth.split("-")
+  return `${month}/${year}`
+}
+
 function normalizePeriodMonth(periodMonth?: string) {
   const now = new Date()
-  const monthDate = periodMonth ? new Date(`${periodMonth}-01T00:00:00Z`) : now
+  let monthDate = now
+
+  if (periodMonth && /^\d{4}-\d{2}$/.test(periodMonth)) {
+    const parsed = new Date(`${periodMonth}-01T00:00:00Z`)
+    if (!Number.isNaN(parsed.getTime())) {
+      monthDate = parsed
+    }
+  }
+
   const year = monthDate.getUTCFullYear()
   const month = monthDate.getUTCMonth()
   return {
@@ -134,26 +139,38 @@ async function computeRemunerationBase(periodMonth?: string): Promise<Remunerati
   const adminClient = createAdminClient()
   const { monthDate, year, month, normalized } = normalizePeriodMonth(periodMonth)
 
-  const endCurrentMonth = lastDay(year, month)
-  const startCurrentMonth = firstDay(year, month)
+  const targetMonth = periodMonthToCarnetMonth(normalized)
+
+  const chartMonthPatterns: string[] = []
+  const chartMonthLabels: Array<{ pattern: string; label: string; year: number; monthIdx: number }> = []
+  for (let i = 5; i >= 0; i -= 1) {
+    const cursor = new Date(Date.UTC(year, month - i, 1))
+    const cYear = cursor.getUTCFullYear()
+    const cMonth = cursor.getUTCMonth()
+    const pattern = periodMonthToCarnetMonth(`${cYear}-${String(cMonth + 1).padStart(2, "0")}`)
+    chartMonthPatterns.push(pattern)
+    chartMonthLabels.push({ pattern, label: monthLabel(cursor), year: cYear, monthIdx: cMonth })
+  }
 
   const [ratePercent, collectorsRes, carnetsRes] = await Promise.all([
     resolveRatePercent(adminClient),
     adminClient
       .from("user_profile")
       .select("user_id, username, email")
-      .in("function", ["collector", "collecteur"])
-      .eq("is_active", true),
+      .in("function", ["collector", "collecteur"]),
     adminClient
       .from("carnet")
-      .select("id, initial_amount, currency, created_at, created_by")
-      .gte("created_at", startCurrentMonth.toISOString())
-      .lte("created_at", endCurrentMonth.toISOString())
-      .eq("is_archived", false),
+      .select("id, initial_amount, currency, month, created_by")
+      .not("month", "is", null),
   ])
 
   const collectors = collectorsRes.data ?? []
-  const carnets = carnetsRes.data ?? []
+  const allCarnets = carnetsRes.data ?? []
+
+  const periodCarnets = allCarnets.filter((c: any) => {
+    const m = String(c.month ?? "")
+    return m.includes(targetMonth)
+  })
 
   const collectorsMap = new Map<string, string>()
   for (const collector of collectors) {
@@ -166,7 +183,7 @@ async function computeRemunerationBase(periodMonth?: string): Promise<Remunerati
     totalInitialAmountUsd: number
   }>()
 
-  for (const carnet of carnets) {
+  for (const carnet of periodCarnets) {
     const collectorId = String((carnet as any).created_by || "")
     if (!collectorId) continue
 
@@ -217,17 +234,9 @@ async function computeRemunerationBase(periodMonth?: string): Promise<Remunerati
   )
 
   const chart: Array<{ month: string; montantFc: number; montantUsd: number }> = []
-  for (let i = 5; i >= 0; i -= 1) {
-    const cursor = new Date(Date.UTC(year, month - i, 1))
-    const cYear = cursor.getUTCFullYear()
-    const cMonth = cursor.getUTCMonth()
-    const start = firstDay(cYear, cMonth)
-    const end = lastDay(cYear, cMonth)
-
-    const monthly = carnets.filter((item: any) => {
-      if (!item.created_at) return false
-      const date = new Date(item.created_at)
-      return date >= start && date <= end
+  for (const entry of chartMonthLabels) {
+    const monthly = allCarnets.filter((item: any) => {
+      return String(item.month ?? "").includes(entry.pattern)
     })
 
     const monthlyInitialFc = monthly
@@ -239,7 +248,7 @@ async function computeRemunerationBase(periodMonth?: string): Promise<Remunerati
       .reduce((sum: number, item: any) => sum + Number(item.initial_amount ?? 0), 0)
 
     chart.push({
-      month: monthLabel(cursor),
+      month: entry.label,
       montantFc: Math.round((monthlyInitialFc * ratePercent) / 100),
       montantUsd: Number(((monthlyInitialUsd * ratePercent) / 100).toFixed(2)),
     })
@@ -530,17 +539,15 @@ export async function getCollectorCarnetRemunerationDetailsAction(input: {
     const adminClient = createAdminClient()
     const ratePercent = await resolveRatePercent(adminClient)
 
-    const { year, month } = normalizePeriodMonth(input.periodMonth)
-    const startCurrentMonth = firstDay(year, month)
-    const endCurrentMonth = lastDay(year, month)
+    const { normalized } = normalizePeriodMonth(input.periodMonth)
+    const targetMonth = periodMonthToCarnetMonth(normalized)
 
     const { data, error } = await adminClient
       .from("carnet")
-      .select("id, number, client_code, created_at, initial_amount, currency")
+      .select("id, number, client_code, created_at, initial_amount, currency, month")
       .eq("created_by", input.collectorId)
-      .gte("created_at", startCurrentMonth.toISOString())
-      .lte("created_at", endCurrentMonth.toISOString())
-      .eq("is_archived", false)
+      .not("month", "is", null)
+      .eq("month", targetMonth)
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -565,6 +572,97 @@ export async function getCollectorCarnetRemunerationDetailsAction(input: {
     return { success: true, data: details }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur lors du chargement du detail par carnet"
+    return { success: false, error: message }
+  }
+}
+
+export type RemunerationHistoryRow = {
+  remunerationId: string
+  collectorId: string
+  collectorName: string
+  periodMonth: string
+  periodLabel: string
+  baseAmountFc: number
+  baseAmountUsd: number
+  amountFc: number
+  amountUsd: number
+  ratePercent: number
+  status: RemunerationStatus
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export async function getRemunerationHistoryAction(): Promise<ActionResult<RemunerationHistoryRow[]>> {
+  try {
+    await assertAuthenticated()
+    const adminClient = createAdminClient()
+
+    const { data: rows, error } = await adminClient
+      .from("collector_remuneration" as any)
+      .select("id, collector_id, period_month, amount_fc, amount_usd, base_amount_fc, base_amount_usd, rate_percent, status, created_at, updated_at")
+      .order("period_month", { ascending: false })
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      const message = String(error.message || "")
+      const code = String((error as any).code || "")
+      const isMissingSchemaObject =
+        /does not exist|schema cache|could not find the table|relation .*collector_remuneration|column .* does not exist/i.test(
+          message,
+        ) ||
+        ["PGRST205", "42P01", "42703"].includes(code)
+
+      if (isMissingSchemaObject) {
+        return { success: true, data: [] }
+      }
+
+      return { success: false, error: message }
+    }
+
+    if (!rows || rows.length === 0) {
+      return { success: true, data: [] }
+    }
+
+    const collectorIds = [...new Set((rows as any[]).map((r) => String(r.collector_id)))]
+
+    const { data: profiles } = await adminClient
+      .from("user_profile")
+      .select("user_id, username, email")
+      .in("user_id", collectorIds)
+
+    const profileMap = new Map<string, string>()
+    for (const p of (profiles ?? []) as any[]) {
+      profileMap.set(p.user_id, p.username || p.email || p.user_id)
+    }
+
+    const history: RemunerationHistoryRow[] = (rows as any[]).map((row) => {
+      const collectorId = String(row.collector_id)
+      const periodMonth = String(row.period_month)
+      const [year, month] = periodMonth.split("-")
+      const monthNames = ["janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre", "decembre"]
+      const monthIdx = Number(month) - 1
+      const periodLabel = `${monthNames[monthIdx] ?? month} ${year}`
+
+      return {
+        remunerationId: String(row.id),
+        collectorId,
+        collectorName: profileMap.get(collectorId) ?? collectorId,
+        periodMonth,
+        periodLabel,
+        baseAmountFc: Number(row.base_amount_fc ?? 0),
+        baseAmountUsd: Number(row.base_amount_usd ?? 0),
+        amountFc: Number(row.amount_fc ?? 0),
+        amountUsd: Number(row.amount_usd ?? 0),
+        ratePercent: Number(row.rate_percent ?? 40),
+        status: String(row.status) === "verser" ? "verser" : "a_verser",
+        createdAt: row.created_at ?? null,
+        updatedAt: row.updated_at ?? null,
+      }
+    })
+
+    return { success: true, data: history }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erreur lors du chargement de l'historique"
     return { success: false, error: message }
   }
 }

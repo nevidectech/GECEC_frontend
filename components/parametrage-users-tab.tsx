@@ -177,7 +177,7 @@ export function ParametrageUsersTab() {
       email: user.email ?? "",
       phone: user.phone ?? "",
       zoneId: user.zone_id ?? "none",
-      role: user.function ?? "other",
+      role: user.function ?? "admin",
       password: "",
     })
     setEditOpen(true)
@@ -416,8 +416,8 @@ export function ParametrageUsersTab() {
                       <div className="flex items-center gap-2">
                         <Select
                           value={user.function ?? "admin"}
-                          onValueChange={(value) => handleRoleChange(user.id, value as ProfileRole)}
-                          disabled={busyUserId === user.id}
+                          onValueChange={(value) => handleRoleChange(user.user_id, value as ProfileRole)}
+                          disabled={busyUserId === user.user_id}
                         >
                           <SelectTrigger className="h-8 w-[170px]">
                             <SelectValue />
